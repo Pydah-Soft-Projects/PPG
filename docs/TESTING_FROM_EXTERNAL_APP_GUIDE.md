@@ -1,268 +1,299 @@
-# Complete Guide: Testing Pydah Payment Gateway from an External Application
+# Pydah Payment Gateway — Client Application Integration Guide
 
-This guide walks you through:
-1. Entering your Razorpay Test Credentials securely.
-2. Obtaining Application API credentials (`X-App-Key` & `X-App-Secret`).
-3. Calling the Gateway from an external application (Node.js, cURL / Postman, or Browser Checkout).
-4. Verifying payment signatures and receiving webhooks.
+This guide provides instructions and copy-pasteable code for integrating any PydahSoft application (LMS, Admissions, Student Portal, ERP, etc.) with the **Pydah Payment Gateway (PPG)**.
 
 ---
 
-## 1. Entering Your Razorpay Test Credentials Securely
+## 1. Environment Configuration (`.env`)
 
-> **Security Rule:** Never paste your Razorpay Key Secret in chat or commit it to Git. Enter it directly into the protected Admin Dashboard.
+> **Best Practice:** Always store your Gateway credentials and URLs in your application backend's `.env` file. **Never** hardcode secrets in code, and **never** expose `PPG_APP_SECRET` in browser/frontend code.
 
-1. Start the Gateway backend and frontend:
-   - **Backend:** `cd backend && npm run dev` (Runs on `http://localhost:5000`)
-   - **Frontend:** `cd frontend && npm run dev` (Runs on `http://localhost:5173`)
-2. Open `http://localhost:5173` in your browser.
-3. Log in with:
-   - **Username:** `admin`
-   - **Password:** `Admin@Pydah2026!`
-4. Navigate to **Payment Providers** in the left sidebar.
-5. You will see **Razorpay - Test Mode Account**. Click **Rotate Keys** (or click **+ Add Provider Configuration**):
-   - **Key ID:** Paste your Razorpay Test Key ID (starts with `rzp_test_...`)
-   - **Key Secret:** Paste your Razorpay Key Secret
-   - **Webhook Secret:** (Optional) Enter a webhook secret string of your choice (e.g. `pydah_test_secret_123`)
-6. Click **Confirm Rotation** / **Save**.
-7. Click the **⚡ Test Connection** button on the card.
-   - You should see a green notification: `Connection Test Passed: Successfully connected and verified Razorpay credentials`.
+In your application backend's `.env` file, add:
 
----
+```dotenv
+# Pydah Payment Gateway Base API URL
+PPG_BASE_URL=http://localhost:5000/api/v1
 
-## 2. Setting Up Razorpay Webhook (Optional but Recommended)
-
-In your [Razorpay Dashboard](https://dashboard.razorpay.com/app/webhooks) (Test Mode):
-1. Go to **Settings → Webhooks → Add New Webhook**.
-2. Copy the Webhook URL from your Gateway Dashboard card:
-   `http://your-server-or-ngrok/api/v1/webhooks/razorpay/<providerConfigurationId>`
-3. Set the Secret to match the **Webhook Secret** you entered in Step 1.
-4. Select active events: `payment.captured`, `payment.failed`, `order.paid`.
-
----
-
-## 3. Registering Your Calling Application
-
-Each calling application needs its own API Key and Secret:
-1. In the Gateway Dashboard, navigate to **Applications**.
-2. If using the default seeded application **Pydah Learning Management System** (`pydah_lms`):
-   - If you need fresh credentials, click **Rotate Secret**.
-   - Copy the `X-App-Key` and `X-App-Secret`.
-3. Or click **+ Register Application** to create a new application (e.g. `pydah_admissions`).
-
----
-
-## 4. End-to-End Integration Flow
-
-```
-[Student / User]              [Your App Backend]               [Pydah Payment Gateway]             [Razorpay]
-       |                              |                                  |                              |
-       | 1. Click "Pay ₹1,500"        |                                  |                              |
-       |----------------------------->|                                  |                              |
-       |                              | 2. POST /api/v1/payments         |                              |
-       |                              |    (with X-App-Key & Secret)     |                              |
-       |                              |--------------------------------->|                              |
-       |                              |                                  | 3. Create Order              |
-       |                              |                                  |----------------------------->|
-       |                              |                                  |<-----------------------------|
-       |                              | 4. Returns checkout options      |                              |
-       |                              |<---------------------------------|                              |
-       | 5. Launch Razorpay Modal     |                                  |                              |
-       |<-----------------------------|                                  |                              |
-       |                              |                                  |                              |
-       | 6. Complete test payment     |                                  |                              |
-       |----------------------------------------------------------------------------------------------->|
-       |                              |                                  |                              |
-       | 7. Return payment_id & sig   |                                  |                              |
-       |----------------------------->|                                  |                              |
-       |                              | 8. POST /api/v1/payments/:id/verify                             |
-       |                              |--------------------------------->|                              |
-       |                              |                                  | 9. Cryptographic HMAC check  |
-       |                              |                                  | 10. Marks SUCCEEDED          |
-       |                              | 11. 200 OK Succeeded             |                              |
-       |                              |<---------------------------------|                              |
-       | 12. "Payment Successful!"    |                                  |                              |
-       |<-----------------------------|                                  |                              |
+# Credentials obtained from PPG Admin Console (Applications section)
+PPG_APP_KEY=key_your_application_key_id
+PPG_APP_SECRET=sec_your_application_secret_key
 ```
 
 ---
 
-## 5. Ready-to-Run Code Examples for Your External Application
+## 2. Integration Flow Architecture
 
-### Option A: Testing via cURL or Postman
-
-#### Step 1: Create a Payment
-```bash
-curl -X POST http://localhost:5000/api/v1/payments \
-  -H "Content-Type: application/json" \
-  -H "X-App-Key: YOUR_APP_KEY" \
-  -H "X-App-Secret: YOUR_APP_SECRET" \
-  -H "X-Idempotency-Key: test-tx-001" \
-  -d '{
-    "businessReference": "INV-2026-TEST-01",
-    "amount": 150000,
-    "currency": "INR",
-    "description": "Semester 1 Tuition Fee",
-    "customer": {
-      "name": "Bannu Kumar",
-      "email": "student@pydah.edu.in",
-      "phone": "+919876543210"
-    }
-  }'
 ```
-
-**Gateway Response (201 Created):**
-```json
-{
-  "success": true,
-  "data": {
-    "paymentId": "pay_trn_1a2b3c4d5e6f",
-    "businessReference": "INV-2026-TEST-01",
-    "status": "CREATED",
-    "amount": 150000,
-    "currency": "INR",
-    "provider": "RAZORPAY",
-    "providerOrderId": "order_RzP12345678",
-    "checkout": {
-      "keyId": "rzp_test_yourkey",
-      "orderId": "order_RzP12345678",
-      "amount": 150000,
-      "currency": "INR",
-      "name": "Pydah Learning Management System",
-      "description": "Semester 1 Tuition Fee",
-      "prefill": {
-        "name": "Bannu Kumar",
-        "email": "student@pydah.edu.in",
-        "contact": "+919876543210"
-      }
-    }
-  }
-}
+[ User Browser / Mobile App ]              [ Your App Backend ]               [ Pydah Payment Gateway ]
+             |                                       |                                   |
+             | 1. Click "Pay"                        |                                   |
+             |-------------------------------------->|                                   |
+             |                                       | 2. POST /payments                 |
+             |                                       |    Headers: X-App-Key & Secret    |
+             |                                       |---------------------------------->|
+             |                                       |                                   | (Creates Razorpay Order)
+             |                                       | 3. Returns { paymentId, checkout }|
+             |                                       |<----------------------------------|
+             | 4. Returns checkout options           |                                   |
+             |<--------------------------------------|                                   |
+             |                                       |                                   |
+             | 5. User completes payment on Razorpay |                                   |
+             |    Modal (returns signature)          |                                   |
+             |                                       |                                   |
+             | 6. POST /verify-payment/:paymentId    |                                   |
+             |-------------------------------------->|                                   |
+             |                                       | 7. POST /payments/:id/verify      |
+             |                                       |---------------------------------->|
+             |                                       |                                   | (Verifies HMAC SHA-256)
+             |                                       | 8. 200 OK (SUCCEEDED)             |
+             |                                       |<----------------------------------|
+             | 9. "Payment Successful!"              |                                   |
+             |<--------------------------------------|                                   |
 ```
 
 ---
 
-### Option B: Node.js (Your Application Backend)
+## 3. Backend Integration (Node.js / Express)
 
-Create a sample test script `test-payment-client.js`:
+Add this router to your application backend:
 
 ```javascript
+// File: routes/payment.routes.js
+const express = require('express');
 const axios = require('axios');
+const router = express.Router();
 
-const GATEWAY_URL = 'http://localhost:5000/api/v1';
-const APP_KEY = 'YOUR_APP_KEY';       // Copy from Gateway Dashboard -> Applications
-const APP_SECRET = 'YOUR_APP_SECRET'; // Copy from Gateway Dashboard -> Applications
+// Load Gateway settings from your backend environment variables
+const PPG_BASE_URL = process.env.PPG_BASE_URL || 'http://localhost:5000/api/v1';
+const APP_KEY = process.env.PPG_APP_KEY;
+const APP_SECRET = process.env.PPG_APP_SECRET;
 
-async function runTestPayment() {
+/**
+ * Endpoint 1: Create a Payment Order
+ * POST /api/payments/create
+ */
+router.post('/payments/create', async (req, res) => {
   try {
-    console.log('1. Initiating payment request with Pydah Payment Gateway...');
+    const { amountInRupees, customerName, customerEmail, customerPhone, description, referenceId } = req.body;
 
-    const createRes = await axios.post(
-      `${GATEWAY_URL}/payments`,
+    if (!amountInRupees || amountInRupees <= 0) {
+      return res.status(400).json({ error: 'Valid payment amount is required' });
+    }
+
+    // PPG stores money in integer minor units (paise). ₹1,500.00 = 150000 paise.
+    const amountInPaise = Math.round(amountInRupees * 100);
+    const businessReference = referenceId || `REF-${Date.now()}`;
+    const idempotencyKey = `idemp-${businessReference}`;
+
+    // Server-to-server call to Pydah Payment Gateway
+    const ppgResponse = await axios.post(
+      `${PPG_BASE_URL}/payments`,
       {
-        businessReference: `INV-${Date.now()}`,
-        amount: 250000, // ₹2,500.00 (in paise)
+        businessReference,
+        amount: amountInPaise,
         currency: 'INR',
-        description: 'Hostel Fee Term 1',
+        description: description || 'PydahSoft Application Payment',
         customer: {
-          name: 'Pydah Student',
-          email: 'student@pydah.edu.in',
-          phone: '+919988776655',
+          name: customerName || '',
+          email: customerEmail || '',
+          phone: customerPhone || '',
         },
+        idempotencyKey,
       },
       {
         headers: {
           'Content-Type': 'application/json',
           'X-App-Key': APP_KEY,
           'X-App-Secret': APP_SECRET,
-          'X-Idempotency-Key': `idemp-${Date.now()}`,
+          'X-Idempotency-Key': idempotencyKey,
         },
+        timeout: 10000,
       }
     );
 
-    const payment = createRes.data.data;
-    console.log('✔ Payment order created successfully:');
-    console.log('   Internal Payment ID:', payment.paymentId);
-    console.log('   Provider Order ID:', payment.providerOrderId);
-    console.log('   Checkout Payload:', JSON.stringify(payment.checkout, null, 2));
-
-    return payment;
+    // Return the paymentId and safe checkout configuration to your frontend
+    res.status(201).json({
+      success: true,
+      paymentId: ppgResponse.data.data.paymentId,
+      checkout: ppgResponse.data.data.checkout,
+    });
   } catch (error) {
-    console.error('Payment creation failed:', error.response?.data || error.message);
+    console.error('PPG Order Creation Error:', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({
+      success: false,
+      error: error.response?.data?.error?.message || error.message,
+    });
+  }
+});
+
+/**
+ * Endpoint 2: Verify Payment Signature
+ * POST /api/payments/verify/:paymentId
+ */
+router.post('/payments/verify/:paymentId', async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      return res.status(400).json({ error: 'Missing payment signature parameters' });
+    }
+
+    // Authoritative cryptographic verification performed by Gateway
+    const verifyResponse = await axios.post(
+      `${PPG_BASE_URL}/payments/${paymentId}/verify`,
+      {
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-App-Key': APP_KEY,
+          'X-App-Secret': APP_SECRET,
+        },
+        timeout: 10000,
+      }
+    );
+
+    // Signature verified successfully -> Payment marked as SUCCEEDED
+    // Perform your application business logic here (mark invoice paid, unlock features, etc.)
+    res.json({
+      success: true,
+      message: 'Payment verified successfully',
+      data: verifyResponse.data.data,
+    });
+  } catch (error) {
+    console.error('PPG Signature Verification Failed:', error.response?.data || error.message);
+    res.status(400).json({
+      success: false,
+      error: 'Cryptographic signature verification failed',
+    });
+  }
+});
+
+/**
+ * Endpoint 3: Optional Inbound Webhook Listener
+ * POST /api/payments/webhook
+ */
+router.post('/payments/webhook', (req, res) => {
+  const event = req.body;
+  const signature = req.headers['x-ppg-signature'];
+
+  console.log(`[PPG Webhook] Event: ${event.event}`, event.data);
+
+  if (event.event === 'payment.succeeded') {
+    // Payment confirmed in gateway
+    console.log(`Payment ${event.data.paymentId} confirmed.`);
+  }
+
+  res.status(200).json({ received: true });
+});
+
+module.exports = router;
+```
+
+---
+
+## 4. Frontend Client Integration (React / Web)
+
+### Step 1: Add Razorpay Checkout Script
+Add Razorpay's script to your frontend's `index.html`:
+```html
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+```
+
+### Step 2: Trigger Payment Function
+```javascript
+async function initiateCheckout(amountInRupees) {
+  try {
+    // 1. Call your own backend
+    const res = await fetch('/api/payments/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amountInRupees,
+        customerName: 'Student Name',
+        customerEmail: 'student@pydah.edu.in',
+        description: 'Semester Tuition Fee',
+      }),
+    });
+
+    const data = await res.json();
+    if (!data.success) {
+      alert('Order creation failed: ' + data.error);
+      return;
+    }
+
+    const { paymentId, checkout } = data;
+
+    // 2. Open Razorpay Checkout Modal
+    const options = {
+      key: checkout.keyId,       // Public Key ID provided by Gateway
+      amount: checkout.amount,   // In paise
+      currency: checkout.currency,
+      name: checkout.name,
+      description: checkout.description,
+      order_id: checkout.orderId,
+      prefill: checkout.prefill,
+      theme: { color: '#4f46e5' },
+      handler: async function (response) {
+        // 3. Send response to your backend for server-side verification
+        const verifyRes = await fetch(`/api/payments/verify/${paymentId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            razorpayOrderId: response.razorpay_order_id,
+            razorpayPaymentId: response.razorpay_payment_id,
+            razorpaySignature: response.razorpay_signature,
+          }),
+        });
+
+        const verifyData = await verifyRes.json();
+        if (verifyData.success) {
+          alert('Payment Successful and Verified!');
+        } else {
+          alert('Verification failed: ' + verifyData.error);
+        }
+      },
+    };
+
+    const rzp = new window.Razorpay(options);
+    rzp.open();
+  } catch (error) {
+    console.error('Checkout error:', error);
+    alert('Failed to initiate checkout: ' + error.message);
   }
 }
-
-runTestPayment();
 ```
 
 ---
 
-### Option C: Browser Checkout (HTML / React Frontend of Your App)
+## 5. cURL Quick Test Reference
 
-When your application receives the `checkout` object from its backend, pass it to the standard Razorpay checkout modal:
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <title>PydahSoft App Checkout</title>
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-</head>
-<body>
-  <h2>Pydah Fee Payment</h2>
-  <button id="pay-btn">Pay ₹2,500 with Razorpay</button>
-
-  <script>
-    document.getElementById('pay-btn').onclick = async function () {
-      // 1. Call your application backend to get checkout config
-      const res = await fetch('/api/create-order', { method: 'POST' });
-      const { paymentId, checkout } = await res.json();
-
-      // 2. Configure Razorpay modal
-      const options = {
-        key: checkout.keyId,
-        amount: checkout.amount,
-        currency: checkout.currency,
-        name: checkout.name,
-        description: checkout.description,
-        order_id: checkout.orderId,
-        prefill: checkout.prefill,
-        theme: { color: '#4f46e5' },
-        handler: async function (response) {
-          // 3. Send response back to your backend to verify
-          const verifyRes = await fetch(`/api/verify-payment/${paymentId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-            }),
-          });
-          const verifyData = await verifyRes.json();
-          alert('Payment Successful! Status: ' + verifyData.data.status);
-        },
-      };
-
-      const rzp = new Razorpay(options);
-      rzp.open();
-    };
-  </script>
-</body>
-</html>
+### Create Payment:
+```bash
+curl -X POST "$PPG_BASE_URL/payments" \
+  -H "Content-Type: application/json" \
+  -H "X-App-Key: $PPG_APP_KEY" \
+  -H "X-App-Secret: $PPG_APP_SECRET" \
+  -H "X-Idempotency-Key: idemp-sample-001" \
+  -d '{
+    "businessReference": "INV-1001",
+    "amount": 150000,
+    "currency": "INR",
+    "description": "Fee Payment",
+    "customer": {
+      "name": "Bannu Kumar",
+      "email": "student@pydah.edu.in"
+    }
+  }'
 ```
 
----
-
-## 6. Verifying the Payment in the PPG Dashboard
-
-After you make a payment with Razorpay Test Mode:
-1. Switch to your Gateway Dashboard at `http://localhost:5173`.
-2. Go to **Overview**:
-   - Notice the **Gross Volume** and **Success Rate** updated in real-time.
-3. Go to **Transactions**:
-   - The transaction will appear marked as `SUCCEEDED`.
-   - Click **Details** to see the authoritative Razorpay Payment ID, Attempt counts, and Timestamps.
-4. Go to **Audit Logs**:
-   - Every operation is recorded with caller IP and audit metadata.
-
+### Check Payment Status:
+```bash
+curl -X GET "$PPG_BASE_URL/payments/PAYMENT_ID" \
+  -H "X-App-Key: $PPG_APP_KEY" \
+  -H "X-App-Secret: $PPG_APP_SECRET"
+```
