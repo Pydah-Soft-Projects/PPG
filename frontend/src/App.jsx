@@ -8,6 +8,7 @@ import { LoginView } from './views/LoginView';
 import { OverviewView } from './views/OverviewView';
 import { TransactionsView } from './views/TransactionsView';
 import { ProvidersView } from './views/ProvidersView';
+import { CollegesRoutingView } from './views/CollegesRoutingView';
 import { ApplicationsView } from './views/ApplicationsView';
 import { RefundsView } from './views/RefundsView';
 import { ReconciliationView } from './views/ReconciliationView';
@@ -20,8 +21,8 @@ function DashboardContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="text-white text-sm font-semibold animate-pulse">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-slate-600 text-sm font-semibold animate-pulse">
           Loading Pydah Payment Gateway...
         </div>
       </div>
@@ -35,7 +36,8 @@ function DashboardContent() {
   const titles = {
     overview: 'Operational Dashboard',
     transactions: 'Transaction Ledger',
-    providers: 'Payment Provider Settings',
+    providers: 'Payment Accounts',
+    colleges: 'Colleges & Course Routing',
     applications: 'Registered Applications',
     refunds: 'Refunds & Returns',
     reconciliation: 'Reconciliation & Recovery',
@@ -60,6 +62,7 @@ function DashboardContent() {
             <TransactionsView selectedTx={selectedTx} setSelectedTx={setSelectedTx} />
           )}
           {currentTab === 'providers' && <ProvidersView />}
+          {currentTab === 'colleges' && <CollegesRoutingView />}
           {currentTab === 'applications' && <ApplicationsView />}
           {currentTab === 'refunds' && <RefundsView />}
           {currentTab === 'reconciliation' && <ReconciliationView />}

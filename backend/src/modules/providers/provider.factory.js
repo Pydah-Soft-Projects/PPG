@@ -1,11 +1,13 @@
 const { PROVIDER_TYPE } = require('../../config/constants');
 const RazorpayProvider = require('./razorpay/razorpay.provider');
+const CashfreeProvider = require('./cashfree/cashfree.provider');
 const MockProvider = require('./mock/mock.provider');
 const AppError = require('../../common/errors/app-error');
 const ERROR_CODES = require('../../common/errors/error-codes');
 
 const providerInstances = {
   [PROVIDER_TYPE.RAZORPAY]: new RazorpayProvider(),
+  [PROVIDER_TYPE.CASHFREE]: new CashfreeProvider(),
   [PROVIDER_TYPE.MOCK]: new MockProvider(),
 };
 

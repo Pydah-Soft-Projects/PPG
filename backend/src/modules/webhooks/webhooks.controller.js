@@ -21,6 +21,26 @@ class WebhooksController {
       next(error);
     }
   }
+
+  async handleCashfreeWebhook(req, res, next) {
+    try {
+      const { providerConfigurationId } = req.params;
+      const signature = req.headers['x-webhook-signature'];
+      const rawBody = req.rawBody || JSON.stringify(req.body);
+
+      const result = await webhooksService.handleCashfreeWebhook({
+        providerConfigurationId,
+        rawBody,
+        signature,
+        headers: req.headers,
+        payload: req.body,
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new WebhooksController();

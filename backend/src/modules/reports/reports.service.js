@@ -75,6 +75,8 @@ class ReportsService {
     status,
     providerConfigurationId,
     businessReference,
+    collegeCode,
+    courseCode,
     search,
     page = 1,
     limit = 20,
@@ -83,6 +85,8 @@ class ReportsService {
     if (applicationId) filter.applicationId = applicationId;
     if (status) filter.status = status;
     if (providerConfigurationId) filter.providerConfigurationId = providerConfigurationId;
+    if (collegeCode) filter['college.code'] = collegeCode;
+    if (courseCode) filter['course.code'] = courseCode;
     if (businessReference) filter.businessReference = new RegExp(businessReference, 'i');
     if (search) {
       filter.$or = [
@@ -92,6 +96,10 @@ class ReportsService {
         { providerPaymentId: search },
         { 'customer.email': new RegExp(search, 'i') },
         { 'customer.name': new RegExp(search, 'i') },
+        { 'college.code': new RegExp(search, 'i') },
+        { 'college.name': new RegExp(search, 'i') },
+        { 'course.code': new RegExp(search, 'i') },
+        { 'course.name': new RegExp(search, 'i') },
       ];
     }
 

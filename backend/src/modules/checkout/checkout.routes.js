@@ -1,0 +1,13 @@
+const express = require('express');
+const checkoutController = require('./checkout.controller');
+
+const router = express.Router();
+
+// Hosted checkout UI page
+router.get('/:paymentId', (req, res) => checkoutController.renderCheckoutPage(req, res));
+
+// Verification endpoint called by the hosted checkout UI
+router.post('/:paymentId/verify', (req, res) => checkoutController.verifyHostedPayment(req, res));
+
+module.exports = router;
+

@@ -125,6 +125,7 @@ export function TransactionsView({ selectedTx, setSelectedTx }) {
                 <th className="px-6 py-3.5">Payment ID</th>
                 <th className="px-6 py-3.5">Application</th>
                 <th className="px-6 py-3.5">Business Ref</th>
+                <th className="px-6 py-3.5">College / Course</th>
                 <th className="px-6 py-3.5">Amount</th>
                 <th className="px-6 py-3.5">Status</th>
                 <th className="px-6 py-3.5">Provider Order</th>
@@ -135,7 +136,7 @@ export function TransactionsView({ selectedTx, setSelectedTx }) {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={9} className="px-6 py-8 text-center text-slate-400">
                     Loading transactions...
                   </td>
                 </tr>
@@ -154,6 +155,20 @@ export function TransactionsView({ selectedTx, setSelectedTx }) {
                     </td>
                     <td className="px-6 py-3.5 text-slate-800 font-semibold">
                       {tx.businessReference}
+                    </td>
+                    <td className="px-6 py-3.5">
+                      {tx.college ? (
+                        <div>
+                          <div className="font-semibold text-slate-800">
+                            {tx.college.name || tx.college.code}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-mono">
+                            {tx.course?.name || tx.course?.code || 'All Courses'}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
                     <td className="px-6 py-3.5 font-bold text-slate-900">
                       {formatPaise(tx.amount)}
@@ -180,7 +195,7 @@ export function TransactionsView({ selectedTx, setSelectedTx }) {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-slate-400">
+                  <td colSpan={9} className="px-6 py-8 text-center text-slate-400">
                     No transactions match your current query.
                   </td>
                 </tr>
@@ -279,6 +294,33 @@ export function TransactionsView({ selectedTx, setSelectedTx }) {
                   <div><span className="text-slate-400">Name:</span> <span className="font-medium">{activeModalTx.customer.name || '—'}</span></div>
                   <div><span className="text-slate-400">Email:</span> <span className="font-medium">{activeModalTx.customer.email || '—'}</span></div>
                   <div><span className="text-slate-400">Phone:</span> <span className="font-medium">{activeModalTx.customer.phone || '—'}</span></div>
+                </div>
+              </div>
+            )}
+
+            {/* College & Course Affiliation */}
+            {(activeModalTx.college || activeModalTx.course) && (
+              <div className="p-3.5 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                <div className="text-indigo-600 font-bold uppercase text-[10px] mb-2">🎓 Student Affiliation (Routed)</div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">College</span>
+                    <span className="font-semibold text-slate-800">
+                      {activeModalTx.college?.name || activeModalTx.college?.code || '—'}
+                    </span>
+                    {activeModalTx.college?.code && (
+                      <span className="text-slate-500 font-mono ml-1 text-[11px]">({activeModalTx.college.code})</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Course</span>
+                    <span className="font-semibold text-slate-800">
+                      {activeModalTx.course?.name || activeModalTx.course?.code || 'General / All'}
+                    </span>
+                    {activeModalTx.course?.code && (
+                      <span className="text-slate-500 font-mono ml-1 text-[11px]">({activeModalTx.course.code})</span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

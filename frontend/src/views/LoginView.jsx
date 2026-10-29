@@ -34,8 +34,8 @@ export function LoginView() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 border border-slate-200">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-slate-200">
         <div className="text-center mb-8">
           <div className="w-14 h-14 bg-indigo-600 rounded-2xl mx-auto flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-indigo-500/30 mb-4">
             P

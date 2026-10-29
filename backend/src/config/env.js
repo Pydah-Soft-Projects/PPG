@@ -18,6 +18,14 @@ const env = {
   DASHBOARD_ORIGIN: (process.env.DASHBOARD_ORIGIN || 'http://localhost:5173,http://localhost:3000')
     .split(',')
     .map((o) => o.trim()),
+  MYSQL: {
+    host: process.env.DB_HOST || 'student-database.cfu0qmo26gh3.ap-south-1.rds.amazonaws.com',
+    port: parseInt(process.env.DB_PORT, 10) || 3306,
+    user: process.env.DB_USER || 'admin',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'student_database',
+    ssl: process.env.DB_SSL === 'true' || process.env.DB_SSL === true ? { rejectUnauthorized: false } : null,
+  },
   RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 60000,
   RATE_LIMIT_MAX: parseInt(process.env.RATE_LIMIT_MAX, 10) || 120,
 };

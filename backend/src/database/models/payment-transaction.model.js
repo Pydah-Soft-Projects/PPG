@@ -79,6 +79,16 @@ const paymentTransactionSchema = new mongoose.Schema(
       email: { type: String, trim: true, lowercase: true },
       phone: { type: String, trim: true },
     },
+    college: {
+      id: { type: Number, index: true },
+      code: { type: String, trim: true, index: true },
+      name: { type: String, trim: true },
+    },
+    course: {
+      id: { type: Number, index: true },
+      code: { type: String, trim: true, index: true },
+      name: { type: String, trim: true },
+    },
     description: {
       type: String,
       trim: true,
@@ -93,6 +103,11 @@ const paymentTransactionSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
+    },
+    returnUrl: {
+      type: String,
+      trim: true,
+      default: '',
     },
     paidAt: {
       type: Date,

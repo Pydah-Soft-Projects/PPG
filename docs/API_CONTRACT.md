@@ -23,10 +23,13 @@ Requires headers:
       "email": "student@pydah.edu.in",
       "phone": "+919876543210"
     },
-    "notes": { "courseId": "CSE-101" },
+    "college": "PYDAH_ENG",
+    "course": "BTECH_CSE",
+    "notes": { "studentId": "PY-2026-88" },
     "idempotencyKey": "unique-idemp-key-12345"
   }
   ```
+  *(Note: `college` can be a college code e.g. `"PYDAH_ENG"` or ID `1`. `course` can be a course code e.g. `"BTECH_CSE"` or ID `5`. PPG automatically resolves the mapped payment provider configuration!)*
 - **Response (201 Created):**
   ```json
   {
@@ -179,7 +182,15 @@ Requires header: `Authorization: Bearer <jwt_admin_token>`
 - `PATCH /api/v1/admin/applications/:id`
 - `POST /api/v1/admin/applications/:id/rotate-credentials`
 
-### 4.4 Transactions & Refunds
+### 4.4 Colleges & Course Dynamic Routing
+- `GET /api/v1/admin/colleges/db-status` (Check AWS RDS MySQL status)
+- `GET /api/v1/admin/colleges` (List colleges from MySQL)
+- `GET /api/v1/admin/colleges/:collegeId/courses` (List courses for a college from MySQL)
+- `GET /api/v1/admin/colleges/rules/all` (List all payment routing rules)
+- `POST /api/v1/admin/colleges/rules` (Upsert routing rule: college + optional course -> provider config)
+- `DELETE /api/v1/admin/colleges/rules/:id` (Delete routing rule)
+
+### 4.5 Transactions & Refunds
 - `GET /api/v1/admin/transactions`
 - `GET /api/v1/admin/transactions/:id`
 - `POST /api/v1/admin/transactions/:id/sync`

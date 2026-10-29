@@ -1,3 +1,4 @@
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -21,13 +22,17 @@ const notificationsRoutes = require('./modules/notifications/notifications.route
 const reportsRoutes = require('./modules/reports/reports.routes');
 const auditRoutes = require('./modules/audit/audit.routes');
 const reconciliationRoutes = require('./modules/reconciliation/reconciliation.routes');
+const collegesRoutes = require('./modules/colleges/colleges.routes');
+const checkoutRoutes = require('./modules/checkout/checkout.routes');
 
 const app = express();
 
 // Security HTTP headers
 app.use(
   helmet({
-    contentSecurityPolicy: false, // Allows flexible dashboard embedding
+    contentSecurityPolicy: false,                       // Allows flexible dashboard embedding
+    frameguard: false,                                  // Allows PPG drop-in SDK modal embedding in approved client apps
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allows client apps to load /sdk/ppg.js
   })
 );
 
@@ -96,8 +101,15 @@ apiRouter.use('/admin/notifications', notificationsRoutes);
 apiRouter.use('/admin/reports', reportsRoutes);
 apiRouter.use('/admin/audit-logs', auditRoutes);
 apiRouter.use('/admin/reconciliation', reconciliationRoutes);
+apiRouter.use('/admin/colleges', collegesRoutes);
 
 app.use('/api/v1', apiRouter);
+
+// Static SDK for drop-in client integrations
+app.use('/sdk', express.static(path.join(__dirname, '../public/sdk')));
+
+// Hosted Checkout Routes
+app.use('/checkout', checkoutRoutes);
 
 // Root greeting
 app.get('/', (req, res) => {

@@ -5,6 +5,7 @@ const ProviderConfiguration = require('../../database/models/provider-configurat
 const Application = require('../../database/models/application.model');
 const { getProviderAdapter } = require('../providers/provider.factory');
 const providerConfigurationsService = require('../provider-configurations/provider-configurations.service');
+const collegesService = require('../colleges/colleges.service');
 const notificationsService = require('../notifications/notifications.service');
 const {
   PAYMENT_STATUS,
@@ -72,21 +73,56 @@ class PaymentsService {
       return {
         payment: existing,
         isIdempotentReplay: true,
+        checkoutUrl: `/checkout/${existing._id}`,
       };
     }
 
-    // 2. Resolve Provider Configuration
-    let providerConfig;
-    if (data.providerConfigurationId) {
-      providerConfig = await ProviderConfiguration.findOne({
-        _id: data.providerConfigurationId,
-        status: 'ACTIVE',
-        $or: [
-          { allowedApplicationIds: application._id },
-          { allowedApplicationIds: { $size: 0 } }, // empty means open to all if configured
-        ],
+    // 2. Resolve Dynamic College/Course Routing & Provider Configuration
+    const collegeIdentifier =
+      data.collegeCode ||
+      (typeof data.college === 'object' ? data.college?.code || data.college?.id : data.college) ||
+      data.collegeId;
+    const courseIdentifier =
+      data.courseCode ||
+      (typeof data.course === 'object' ? data.course?.code || data.course?.id : data.course) ||
+      data.courseId;
+
+    let resolvedCollegeMeta = null;
+    let resolvedCourseMeta = null;
+    let resolvedProviderConfigId = data.providerConfigurationId;
+
+    if (collegeIdentifier) {
+      const routingResult = await collegesService.resolveProviderConfiguration({
+        applicationId: application._id,
+        collegeIdentifier,
+        courseIdentifier,
       });
-    } else {
+
+      if (routingResult) {
+        if (routingResult.courseRoutingMissing) {
+          throw AppError.badRequest(
+            `No payment account configured for course '${courseIdentifier}'. Payments cannot proceed without a dedicated course account.`,
+            ERROR_CODES.PROVIDER_UNAVAILABLE
+          );
+        }
+
+        if (!resolvedProviderConfigId && routingResult.providerConfigurationId) {
+          resolvedProviderConfigId = routingResult.providerConfigurationId;
+        }
+        resolvedCollegeMeta = routingResult.college;
+        resolvedCourseMeta = routingResult.course;
+      }
+    }
+
+    let providerConfig;
+    if (resolvedProviderConfigId) {
+      providerConfig = await ProviderConfiguration.findOne({
+        _id: resolvedProviderConfigId,
+        status: 'ACTIVE',
+      });
+    }
+
+    if (!providerConfig) {
       // Find first enabled provider config matching application
       providerConfig = await ProviderConfiguration.findOne({
         status: 'ACTIVE',
@@ -157,8 +193,11 @@ class PaymentsService {
       providerConfigurationId: providerConfig._id,
       providerOrderId: providerOrderResult.orderId,
       customer: data.customer || {},
+      college: resolvedCollegeMeta || (collegeIdentifier ? { code: String(collegeIdentifier) } : undefined),
+      course: resolvedCourseMeta || (courseIdentifier ? { code: String(courseIdentifier) } : undefined),
       description: data.description || '',
       notes: data.notes || {},
+      returnUrl: data.returnUrl || application.allowedReturnUrls?.[0] || '',
     });
 
     // 5. Save Initial Attempt
@@ -176,6 +215,7 @@ class PaymentsService {
     return {
       payment: transaction,
       isIdempotentReplay: false,
+      checkoutUrl: `/checkout/${transaction._id}`,
       checkout: {
         keyId: providerConfig.keyId,
         orderId: providerOrderResult.orderId,

@@ -18,6 +18,33 @@ const createPaymentSchema = z.object({
   notes: z.record(z.string()).optional(),
   idempotencyKey: z.string().min(4).max(128).optional(),
   providerConfigurationId: z.string().optional(),
+  returnUrl: z.string().url('returnUrl must be a valid URL').optional().or(z.literal('')),
+  college: z
+    .union([
+      z.string(),
+      z.number(),
+      z.object({
+        id: z.number().optional(),
+        code: z.string().optional(),
+        name: z.string().optional(),
+      }),
+    ])
+    .optional(),
+  course: z
+    .union([
+      z.string(),
+      z.number(),
+      z.object({
+        id: z.number().optional(),
+        code: z.string().optional(),
+        name: z.string().optional(),
+      }),
+    ])
+    .optional(),
+  collegeCode: z.string().optional(),
+  courseCode: z.string().optional(),
+  collegeId: z.number().optional(),
+  courseId: z.number().optional(),
 });
 
 const verifyPaymentSchema = z.object({

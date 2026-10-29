@@ -19,6 +19,7 @@ class ProviderConfigurationsService {
 
     const config = await ProviderConfiguration.create({
       name: data.name,
+      accountNumber: data.accountNumber || '',
       provider: data.provider,
       environment: data.environment,
       keyId: data.keyId,
@@ -73,10 +74,25 @@ class ProviderConfigurationsService {
     }
 
     if (updates.name !== undefined) config.name = updates.name;
+    if (updates.accountNumber !== undefined) config.accountNumber = updates.accountNumber;
     if (updates.status !== undefined) config.status = updates.status;
     if (updates.allowedApplicationIds !== undefined)
       config.allowedApplicationIds = updates.allowedApplicationIds;
     if (updates.notes !== undefined) config.notes = updates.notes;
+
+    if (updates.keyId && updates.keyId.trim()) {
+      config.keyId = updates.keyId.trim();
+    }
+    if (updates.keySecret && updates.keySecret.trim()) {
+      config.encryptedKeySecret = encryptSecret(updates.keySecret.trim());
+      config.lastCredentialRotationAt = new Date();
+    }
+    if (updates.webhookSecret !== undefined) {
+      config.encryptedWebhookSecret = updates.webhookSecret.trim()
+        ? encryptSecret(updates.webhookSecret.trim())
+        : null;
+    }
+
     config.updatedBy = actorContext.actorId || 'SYSTEM';
 
     await config.save();

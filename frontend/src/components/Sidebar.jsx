@@ -2,7 +2,8 @@ export function Sidebar({ currentTab, setTab }) {
   const navItems = [
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'transactions', label: 'Transactions', icon: '💳' },
-    { id: 'providers', label: 'Payment Providers', icon: '⚙️' },
+    { id: 'providers', label: 'Payment Accounts', icon: '💳' },
+    { id: 'colleges', label: 'Colleges & Routing', icon: '🏛️' },
     { id: 'applications', label: 'Applications', icon: '📱' },
     { id: 'refunds', label: 'Refunds', icon: '↩️' },
     { id: 'reconciliation', label: 'Reconciliation', icon: '⚖️' },

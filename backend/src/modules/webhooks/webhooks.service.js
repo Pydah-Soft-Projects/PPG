@@ -210,6 +210,75 @@ class WebhooksService {
         break;
     }
   }
+
+  async handleCashfreeWebhook({ providerConfigurationId, rawBody, signature, headers, payload }) {
+    const config = await ProviderConfiguration.findById(providerConfigurationId);
+    if (!config) {
+      throw AppError.notFound(`Provider configuration '${providerConfigurationId}' not found`);
+    }
+
+    const credentials = providerConfigurationsService.getDecryptedCredentials(config);
+    const adapter = getProviderAdapter(config.provider);
+
+    const isSignatureValid = await adapter.verifyWebhookSignature({
+      rawBody,
+      signature,
+      credentials,
+      headers,
+    });
+
+    if (!isSignatureValid) {
+      logger.warn('Invalid Cashfree webhook signature rejected', { providerConfigurationId });
+      throw AppError.badRequest('Invalid Cashfree webhook signature', ERROR_CODES.INVALID_SIGNATURE);
+    }
+
+    const eventType = payload.type || payload.event || 'PAYMENT_SUCCESS_WEBHOOK';
+    const orderData = payload.data?.order || {};
+    const paymentData = payload.data?.payment || {};
+    const providerOrderId = orderData.order_id || payload.orderId;
+    const providerPaymentId = String(paymentData.cf_payment_id || paymentData.payment_id || '');
+
+    if (!providerOrderId) {
+      logger.info('Cashfree webhook missing order reference, ignoring', { eventType });
+      return { received: true };
+    }
+
+    let transaction = await PaymentTransaction.findOne({
+      $or: [
+        { providerOrderId },
+        { _id: providerOrderId },
+      ],
+    });
+
+    if (!transaction) {
+      logger.warn('No matching payment transaction found for Cashfree webhook', { providerOrderId });
+      return { received: true };
+    }
+
+    const isSuccess =
+      paymentData.payment_status === 'SUCCESS' ||
+      eventType === 'PAYMENT_SUCCESS_WEBHOOK' ||
+      eventType === 'ORDER_PAID_SUCCESS';
+
+    if (isSuccess && isValidTransition(transaction.status, PAYMENT_STATUS.SUCCEEDED)) {
+      transaction.status = PAYMENT_STATUS.SUCCEEDED;
+      transaction.providerPaymentId = providerPaymentId;
+      transaction.paidAt = new Date();
+      await transaction.save();
+
+      logger.info('Cashfree payment marked SUCCEEDED via webhook', {
+        paymentId: transaction._id,
+        providerOrderId,
+        providerPaymentId,
+      });
+
+      notificationsService.notifyPaymentEvent(transaction, 'payment.succeeded').catch((err) => {
+        logger.error('Cashfree notification dispatch failed', { error: err.message });
+      });
+    }
+
+    return { received: true };
+  }
 }
 
 module.exports = new WebhooksService();

@@ -11,6 +11,9 @@ class PaymentsController {
       });
 
       const statusCode = result.isIdempotentReplay ? 200 : 201;
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+      const host = req.get('host') || 'localhost:5000';
+      const fullCheckoutUrl = `${protocol}://${host}${result.checkoutUrl}`;
 
       res.status(statusCode).json({
         success: true,
@@ -19,6 +22,7 @@ class PaymentsController {
           : 'Payment created successfully',
         data: {
           paymentId: result.payment._id,
+          checkoutUrl: fullCheckoutUrl,
           businessReference: result.payment.businessReference,
           status: result.payment.status,
           amount: result.payment.amount,
@@ -26,6 +30,7 @@ class PaymentsController {
           provider: result.payment.provider,
           providerOrderId: result.payment.providerOrderId,
           checkout: result.checkout,
+          returnUrl: result.payment.returnUrl,
           createdAt: result.payment.createdAt,
         },
       });

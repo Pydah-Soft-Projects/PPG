@@ -24,6 +24,11 @@ const providerConfigurationSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    accountNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     provider: {
       type: String,
       enum: Object.values(PROVIDER_TYPE),
@@ -87,8 +92,10 @@ providerConfigurationSchema.index({ provider: 1, environment: 1, status: 1 });
  */
 providerConfigurationSchema.methods.toSafeObject = function () {
   return {
+    _id: this._id,
     id: this._id,
     name: this.name,
+    accountNumber: this.accountNumber || '',
     provider: this.provider,
     environment: this.environment,
     keyId: this.keyId,
