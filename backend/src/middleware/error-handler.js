@@ -16,7 +16,7 @@ function errorHandlerMiddleware(err, req, res, next) {
     message = 'Malformed JSON in request payload';
   }
 
-  // Handle Mongoose CastError (e.g., invalid ObjectId/string format)
+  // Handle Mongoose CastError
   if (err.name === 'CastError') {
     statusCode = 400;
     errorCode = ERROR_CODES.BAD_REQUEST;
@@ -42,21 +42,15 @@ function errorHandlerMiddleware(err, req, res, next) {
     details = err.keyValue;
   }
 
-  // Log error
+  // Attach formatted error message to req for clean one-line logging
+  req._errorMessage = message;
+
+  // If 500 internal server error, log full stack trace for debugging
   if (statusCode >= 500) {
-    logger.error('Unhandled internal server error', {
+    logger.error(`Internal server error: ${message}`, {
       requestId: req.id,
       path: req.originalUrl,
-      error: err.message,
       stack: err.stack,
-    });
-  } else {
-    logger.warn('Client request error', {
-      requestId: req.id,
-      path: req.originalUrl,
-      statusCode,
-      errorCode,
-      message,
     });
   }
 
@@ -75,4 +69,3 @@ function errorHandlerMiddleware(err, req, res, next) {
 }
 
 module.exports = errorHandlerMiddleware;
-

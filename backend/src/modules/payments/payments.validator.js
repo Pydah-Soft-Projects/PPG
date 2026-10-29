@@ -10,9 +10,9 @@ const createPaymentSchema = z.object({
   description: z.string().max(500).optional(),
   customer: z
     .object({
-      name: z.string().max(100).optional(),
-      email: z.string().email().optional(),
-      phone: z.string().max(20).optional(),
+      name: z.string().max(100).optional().or(z.literal('')),
+      email: z.string().email('Invalid email format').optional().or(z.literal('')),
+      phone: z.string().max(20).optional().or(z.literal('')),
     })
     .optional(),
   notes: z.record(z.string()).optional(),

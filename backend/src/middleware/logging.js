@@ -1,6 +1,11 @@
 const { logger } = require('../common/logger/logger');
 
 function loggingMiddleware(req, res, next) {
+  // Ignore harmless dev server polling to keep terminal clean
+  if (req.url.startsWith('/socket.io') || req.url.includes('hot-update')) {
+    return next();
+  }
+
   const startTime = Date.now();
 
   res.on('finish', () => {
@@ -11,16 +16,15 @@ function loggingMiddleware(req, res, next) {
       path: req.originalUrl || req.url,
       statusCode: res.statusCode,
       durationMs: duration,
-      ip: req.ip || req.connection.remoteAddress,
-      userAgent: req.headers['user-agent'],
+      errorMessage: req._errorMessage || null,
     };
 
     if (res.statusCode >= 500) {
-      logger.error('Request completed with 5xx error', logData);
+      logger.error('Request failed with 5xx', logData);
     } else if (res.statusCode >= 400) {
-      logger.warn('Request completed with 4xx warning', logData);
+      logger.warn('Request failed with 4xx', logData);
     } else {
-      logger.info('Request handled successfully', logData);
+      logger.info('Request succeeded', logData);
     }
   });
 
@@ -28,4 +32,3 @@ function loggingMiddleware(req, res, next) {
 }
 
 module.exports = loggingMiddleware;
-
