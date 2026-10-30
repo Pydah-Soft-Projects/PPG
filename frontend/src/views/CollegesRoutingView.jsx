@@ -410,6 +410,9 @@ export function CollegesRoutingView() {
     return c.name?.toLowerCase().includes(q) || c.code?.toLowerCase().includes(q);
   });
 
+  // Only display ACTIVE payment accounts in the routing dropdown
+  const activeProviders = providers.filter((p) => p.status === 'ACTIVE');
+
   return (
     <div className="space-y-6">
       {/* RDS Connection Card */}
@@ -1030,17 +1033,22 @@ export function CollegesRoutingView() {
 
             {/* Step 4: Select Payment Account */}
             <div>
-              <label className="block font-bold text-slate-800 uppercase tracking-wider mb-1">
-                4. Select Payment Account *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-bold text-slate-800 uppercase tracking-wider">
+                  4. Select Payment Account *
+                </label>
+                <span className="text-[11px] text-emerald-600 font-semibold">
+                  {activeProviders.length} active account(s) available
+                </span>
+              </div>
               <select
                 value={selectedProviderId}
                 onChange={(e) => setSelectedProviderId(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
                 required
               >
-                <option value="">Select Payment Account</option>
-                {providers.map((p) => {
+                <option value="">Select Active Payment Account</option>
+                {activeProviders.map((p) => {
                   const provId = p.id || p._id;
                   return (
                     <option key={provId} value={provId}>
@@ -1050,9 +1058,15 @@ export function CollegesRoutingView() {
                   );
                 })}
               </select>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Transactions from the selected colleges and courses will credit this account.
-              </p>
+              {activeProviders.length === 0 ? (
+                <p className="text-xs text-rose-500 mt-1 font-semibold">
+                  ⚠️ No active payment accounts found. Please activate an account in Payment Accounts first.
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Transactions from the selected colleges and courses will credit this account. Inactive accounts are excluded.
+                </p>
+              )}
             </div>
 
             {/* Step 5: Status & Notes */}
