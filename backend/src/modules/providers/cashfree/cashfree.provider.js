@@ -16,11 +16,14 @@ class CashfreeProvider extends BaseProviderInterface {
     if (!credentials || !credentials.keyId || !credentials.keySecret) {
       throw new AppError('Missing Cashfree Client ID or Secret Key', 400, ERROR_CODES.PROVIDER_ERROR);
     }
+    const rawVersion = credentials.webhookSecret || '';
+    const apiVersion = rawVersion.includes('-') ? rawVersion.trim() : '2023-08-01';
+
     return {
       'Content-Type': 'application/json',
-      'x-client-id': credentials.keyId,
-      'x-client-secret': credentials.keySecret,
-      'x-api-version': '2023-08-01',
+      'x-client-id': credentials.keyId.trim(),
+      'x-client-secret': credentials.keySecret.trim(),
+      'x-api-version': apiVersion,
     };
   }
 
@@ -183,12 +186,48 @@ class CashfreeProvider extends BaseProviderInterface {
       const baseUrl = this.getBaseUrl(credentials);
       const headers = this.getHeaders(credentials);
 
-      // Safe non-mutating check
-      await axios.get(`${baseUrl}/orders?limit=1`, { headers, timeout: 8000 });
-      return {
-        success: true,
-        message: 'Successfully connected and verified Cashfree credentials',
-      };
+      // Cashfree PG does not provide an open-ended "GET /orders" list endpoint.
+      // Calling GET /orders causes Cashfree to return: "endpoint or method is not valid".
+      // Instead, we perform an authenticated probe to GET /orders/{probe_id}:
+      // - If credentials are valid, Cashfree authenticates the request and responds with 404 (order not found).
+      // - If credentials are invalid, Cashfree explicitly responds with 401 Unauthorized.
+      try {
+        await axios.get(`${baseUrl}/orders/probe_${Date.now()}`, { headers, timeout: 8000 });
+        return {
+          success: true,
+          message: 'Successfully connected and verified Cashfree credentials',
+        };
+      } catch (err) {
+        const status = err.response?.status;
+        const errData = err.response?.data || {};
+
+        // 401 Unauthorized: Credentials are bad
+        if (status === 401) {
+          return {
+            success: false,
+            message: errData.message || 'Authentication failed: Invalid Cashfree App ID or Secret Key',
+          };
+        }
+
+        // 404 with order not found / invalid request: Authentication passed!
+        if (
+          status === 404 &&
+          (errData.code?.includes('order') ||
+            errData.message?.toLowerCase().includes('order') ||
+            errData.type === 'invalid_request_error')
+        ) {
+          return {
+            success: true,
+            message: 'Successfully authenticated with Cashfree Payment Gateway',
+          };
+        }
+
+        const errMsg = errData.message || err.message;
+        return {
+          success: false,
+          message: errMsg || 'Failed to authenticate with Cashfree',
+        };
+      }
     } catch (error) {
       const errMsg = error.response?.data?.message || error.message;
       return {
