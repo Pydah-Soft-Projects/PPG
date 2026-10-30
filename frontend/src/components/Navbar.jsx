@@ -4,7 +4,7 @@ export function Navbar({ title }) {
   const { user, logout } = useAuth();
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0 shadow-xs">
+    <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-xs">
       <div className="flex items-center gap-4">
         <h1 className="text-xl font-bold text-slate-800">{title}</h1>
         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
