@@ -156,6 +156,9 @@ class PaymentsService {
     // 3. Create Provider Order
     let providerOrderResult;
     try {
+      const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5000';
+      const checkoutReturnUrl = `${baseUrl}/checkout/${paymentId}?cf_order_id={order_id}`;
+
       providerOrderResult = await adapter.createOrder({
         orderData: {
           amount,
@@ -167,6 +170,7 @@ class PaymentsService {
             applicationId: application._id,
             businessReference: data.businessReference,
             returnUrl: data.returnUrl || application.allowedReturnUrls?.[0] || '',
+            checkoutReturnUrl,
             ...(data.notes || {}),
           },
         },
@@ -329,6 +333,35 @@ class PaymentsService {
 
     if (!payment) {
       throw AppError.notFound('Payment not found');
+    }
+
+    // Auto-sync with Cashfree if order is not marked SUCCEEDED yet
+    if (payment.status !== PAYMENT_STATUS.SUCCEEDED && payment.provider === 'CASHFREE' && payment.providerOrderId) {
+      try {
+        const providerConfig = await ProviderConfiguration.findById(payment.providerConfigurationId);
+        if (providerConfig) {
+          const credentials = providerConfigurationsService.getDecryptedCredentials(providerConfig);
+          const adapter = getProviderAdapter('CASHFREE');
+          const isPaid = await adapter.verifyPaymentSignature({
+            paymentData: { orderId: payment.providerOrderId },
+            credentials,
+          });
+          if (isPaid) {
+            payment.status = PAYMENT_STATUS.SUCCEEDED;
+            payment.paidAt = new Date();
+            try {
+              const details = await adapter.getPaymentDetails({
+                providerPaymentId: payment.providerOrderId,
+                credentials,
+              });
+              if (details.rawResponse?.cf_payment_id) {
+                payment.providerPaymentId = String(details.rawResponse.cf_payment_id);
+              }
+            } catch (_) {}
+            await payment.save();
+          }
+        }
+      } catch (_) {}
     }
 
     return payment;

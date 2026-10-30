@@ -51,15 +51,16 @@ class ReconciliationService {
 
     let providerDetails;
     try {
-      if (payment.providerPaymentId) {
+      const queryId = payment.providerPaymentId || payment.providerOrderId;
+      if (queryId) {
         providerDetails = await adapter.getPaymentDetails({
-          providerPaymentId: payment.providerPaymentId,
+          providerPaymentId: queryId,
           credentials,
         });
       } else {
         return {
           payment,
-          message: 'Payment has orderId but no provider payment id completed yet',
+          message: 'Payment lacks provider reference to query status',
           synced: false,
         };
       }
@@ -74,6 +75,9 @@ class ReconciliationService {
     if (providerDetails.status === 'captured') {
       newStatus = PAYMENT_STATUS.SUCCEEDED;
       payment.paidAt = payment.paidAt || new Date();
+      if (providerDetails.rawResponse?.cf_payment_id) {
+        payment.providerPaymentId = String(providerDetails.rawResponse.cf_payment_id);
+      }
     } else if (providerDetails.status === 'failed') {
       newStatus = PAYMENT_STATUS.FAILED;
       payment.failedAt = payment.failedAt || new Date();

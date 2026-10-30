@@ -3,6 +3,9 @@ const PaymentAttempt = require('../../database/models/payment-attempt.model');
 const ProviderConfiguration = require('../../database/models/provider-configuration.model');
 const Application = require('../../database/models/application.model');
 const paymentsService = require('../payments/payments.service');
+const providerConfigurationsService = require('../provider-configurations/provider-configurations.service');
+const { getProviderAdapter } = require('../providers/provider.factory');
+const notificationsService = require('../notifications/notifications.service');
 const { formatCurrency } = require('../../common/utils/amount');
 const { PAYMENT_STATUS } = require('../../config/constants');
 const { logger } = require('../../common/logger/logger');
@@ -15,6 +18,41 @@ class CheckoutController {
 
       if (!payment) {
         return res.status(404).send(this.renderErrorPage('Payment Not Found', 'The requested payment session does not exist or has expired.'));
+      }
+
+      // Auto-verify with Cashfree if returning from Cashfree redirect or order param is present
+      const cfOrderId = req.query.cf_order_id || req.query.order_id;
+      if (cfOrderId && payment.status !== PAYMENT_STATUS.SUCCEEDED && payment.provider === 'CASHFREE') {
+        try {
+          const providerConfig = await ProviderConfiguration.findById(payment.providerConfigurationId);
+          if (providerConfig) {
+            const credentials = providerConfigurationsService.getDecryptedCredentials(providerConfig);
+            const adapter = getProviderAdapter('CASHFREE');
+            const isPaid = await adapter.verifyPaymentSignature({
+              paymentData: { orderId: cfOrderId || payment.providerOrderId },
+              credentials,
+            });
+
+            if (isPaid) {
+              payment.status = PAYMENT_STATUS.SUCCEEDED;
+              payment.paidAt = new Date();
+              try {
+                const details = await adapter.getPaymentDetails({
+                  providerPaymentId: cfOrderId || payment.providerOrderId,
+                  credentials,
+                });
+                if (details.rawResponse?.cf_payment_id) {
+                  payment.providerPaymentId = String(details.rawResponse.cf_payment_id);
+                }
+              } catch (_) {}
+              await payment.save();
+
+              notificationsService.notifyPaymentEvent(payment, 'payment.succeeded').catch(() => {});
+            }
+          }
+        } catch (checkErr) {
+          logger.warn('Failed to auto-verify Cashfree order on return', { error: checkErr.message });
+        }
       }
 
       const application = await Application.findById(payment.applicationId);
@@ -119,6 +157,75 @@ class CheckoutController {
         success: false,
         error: error.message || 'Signature verification failed',
       });
+    }
+  }
+
+  async getPaymentStatus(req, res) {
+    try {
+      const { paymentId } = req.params;
+      const payment = await PaymentTransaction.findById(paymentId);
+      if (!payment) {
+        return res.status(404).json({ success: false, error: 'Payment not found' });
+      }
+
+      // If pending Cashfree, actively check Cashfree API
+      if (payment.status !== PAYMENT_STATUS.SUCCEEDED && payment.provider === 'CASHFREE' && payment.providerOrderId) {
+        try {
+          const providerConfig = await ProviderConfiguration.findById(payment.providerConfigurationId);
+          if (providerConfig) {
+            const credentials = providerConfigurationsService.getDecryptedCredentials(providerConfig);
+            const adapter = getProviderAdapter('CASHFREE');
+            const isPaid = await adapter.verifyPaymentSignature({
+              paymentData: { orderId: payment.providerOrderId },
+              credentials,
+            });
+
+            if (isPaid) {
+              payment.status = PAYMENT_STATUS.SUCCEEDED;
+              payment.paidAt = new Date();
+              try {
+                const details = await adapter.getPaymentDetails({
+                  providerPaymentId: payment.providerOrderId,
+                  credentials,
+                });
+                if (details.rawResponse?.cf_payment_id) {
+                  payment.providerPaymentId = String(details.rawResponse.cf_payment_id);
+                }
+              } catch (_) {}
+              await payment.save();
+
+              notificationsService.notifyPaymentEvent(payment, 'payment.succeeded').catch(() => {});
+            }
+          }
+        } catch (e) {
+          logger.warn('Status poll Cashfree check failed', { error: e.message });
+        }
+      }
+
+      const application = await Application.findById(payment.applicationId);
+      const effectiveReturnUrl = payment.returnUrl || application?.allowedReturnUrls?.[0] || '';
+      let redirectUrl = null;
+      if (payment.status === PAYMENT_STATUS.SUCCEEDED && effectiveReturnUrl) {
+        try {
+          const u = new URL(effectiveReturnUrl);
+          u.searchParams.set('paymentId', payment._id);
+          u.searchParams.set('status', 'SUCCEEDED');
+          u.searchParams.set('businessReference', payment.businessReference);
+          redirectUrl = u.toString();
+        } catch (_) {
+          redirectUrl = `${effectiveReturnUrl}?paymentId=${payment._id}&status=SUCCEEDED`;
+        }
+      }
+
+      return res.json({
+        success: true,
+        status: payment.status,
+        paymentId: payment._id,
+        paidAt: payment.paidAt,
+        redirectUrl,
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
     }
   }
 
@@ -433,7 +540,47 @@ class CheckoutController {
       }).catch((err) => {
         setStatus('Cashfree checkout initialization failed: ' + (err.message || err), true);
       });
+
+      startCashfreePolling();
     }
+
+    let pollInterval = null;
+    function startCashfreePolling() {
+      if (pollInterval) return;
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/checkout/${payment._id}/status');
+          const data = await res.json();
+          if (data && data.status === 'SUCCEEDED') {
+            clearInterval(pollInterval);
+            setStatus('Payment successful! Redirecting...', false);
+            setTimeout(() => {
+              if (data.redirectUrl) {
+                window.location.href = data.redirectUrl;
+              } else {
+                window.location.reload();
+              }
+            }, 600);
+          }
+        } catch (_) {}
+      }, 3000);
+    }
+
+    window.addEventListener('focus', () => {
+      if (${isCashfree}) {
+        fetch('/checkout/${payment._id}/status')
+          .then(r => r.json())
+          .then(data => {
+            if (data && data.status === 'SUCCEEDED') {
+              setStatus('Payment verified successfully! Redirecting...', false);
+              setTimeout(() => {
+                if (data.redirectUrl) window.location.href = data.redirectUrl;
+                else window.location.reload();
+              }, 500);
+            }
+          }).catch(() => {});
+      }
+    });
 
     function completeMockPayment() {
       sendVerification({

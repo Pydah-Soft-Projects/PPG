@@ -55,7 +55,7 @@ class CashfreeProvider extends BaseProviderInterface {
           customer_phone: customer.phone ? customer.phone.replace(/[^0-9]/g, '').slice(-10) : (orderData.notes?.customerPhone || '9876543210'),
         },
         order_meta: {
-          return_url: orderData.notes?.returnUrl || '',
+          return_url: orderData.notes?.checkoutReturnUrl || orderData.notes?.returnUrl || '',
         },
         order_note: orderData.notes?.description || 'Pydah Gateway Payment',
       };

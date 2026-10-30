@@ -96,7 +96,8 @@ export function CollegesRoutingView() {
       setSelectedCourseIds([]);
     }
 
-    const defaultProviderId = providers[0]?._id || providers[0]?.id || '';
+    const activeProviders = providers.filter((p) => p.status === 'ACTIVE');
+    const defaultProviderId = activeProviders[0]?._id || activeProviders[0]?.id || '';
     setSelectedProviderId(defaultProviderId);
     setRuleStatus('ACTIVE');
     setNotes('');
@@ -129,8 +130,10 @@ export function CollegesRoutingView() {
       setSelectedCourseIds([]);
     }
 
-    const defaultProviderId = rule.providerConfigurationId?._id || rule.providerConfigurationId?.id || '';
-    setSelectedProviderId(defaultProviderId);
+    const activeProviders = providers.filter((p) => p.status === 'ACTIVE');
+    const ruleProvId = rule.providerConfigurationId?._id || rule.providerConfigurationId?.id || '';
+    const isProvActive = activeProviders.some((p) => (p.id || p._id) === ruleProvId);
+    setSelectedProviderId(isProvActive ? ruleProvId : (activeProviders[0]?._id || activeProviders[0]?.id || ''));
     setRuleStatus(rule.status || 'ACTIVE');
     setNotes(rule.notes || '');
 
