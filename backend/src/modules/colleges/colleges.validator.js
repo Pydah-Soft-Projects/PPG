@@ -40,7 +40,21 @@ const batchUpsertRoutingRulesSchema = z.object({
   notes: z.string().optional().default(''),
 });
 
+const updateRoutingRuleSchema = z.object({
+  collegeId: z.number().int().optional(),
+  collegeCode: z.string().min(1).optional(),
+  collegeName: z.string().min(1).optional(),
+  courseScope: z.enum(['ALL', 'SPECIFIC']).optional(),
+  courseId: z.number().int().nullable().optional(),
+  courseCode: z.string().nullable().optional(),
+  courseName: z.string().nullable().optional(),
+  providerConfigurationId: z.string().min(1).optional(),
+  status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
+  notes: z.string().optional().default(''),
+});
+
 module.exports = {
   upsertRoutingRuleSchema,
   batchUpsertRoutingRulesSchema,
+  updateRoutingRuleSchema,
 };

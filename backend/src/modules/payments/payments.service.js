@@ -161,10 +161,12 @@ class PaymentsService {
           amount,
           currency,
           receipt: paymentId,
+          customer: data.customer || {},
           notes: {
             paymentId,
             applicationId: application._id,
             businessReference: data.businessReference,
+            returnUrl: data.returnUrl || application.allowedReturnUrls?.[0] || '',
             ...(data.notes || {}),
           },
         },
@@ -192,6 +194,7 @@ class PaymentsService {
       provider: providerConfig.provider,
       providerConfigurationId: providerConfig._id,
       providerOrderId: providerOrderResult.orderId,
+      paymentSessionId: providerOrderResult.paymentSessionId || null,
       customer: data.customer || {},
       college: resolvedCollegeMeta || (collegeIdentifier ? { code: String(collegeIdentifier) } : undefined),
       course: resolvedCourseMeta || (courseIdentifier ? { code: String(courseIdentifier) } : undefined),
@@ -219,6 +222,7 @@ class PaymentsService {
       checkout: {
         keyId: providerConfig.keyId,
         orderId: providerOrderResult.orderId,
+        paymentSessionId: providerOrderResult.paymentSessionId || null,
         amount,
         currency,
         name: application.name,

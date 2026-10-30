@@ -209,6 +209,58 @@ class CollegesService {
   }
 
   /**
+   * Update an existing routing rule (e.g. status, provider, notes)
+   */
+  async updateRoutingRule(id, updates) {
+    const rule = await CollegeRouting.findById(id);
+    if (!rule) {
+      throw AppError.notFound('Routing rule not found', ERROR_CODES.NOT_FOUND);
+    }
+
+    // Application is intentionally immutable during edit (cannot be changed)
+
+    if (updates.collegeCode && updates.collegeName) {
+      rule.collegeId = updates.collegeId ? Number(updates.collegeId) : rule.collegeId;
+      rule.collegeCode = updates.collegeCode.trim();
+      rule.collegeName = updates.collegeName.trim();
+    }
+
+    if (updates.courseScope === 'ALL' || updates.courseCode === null) {
+      rule.courseId = null;
+      rule.courseCode = null;
+      rule.courseName = null;
+    } else if (updates.courseCode) {
+      rule.courseId = updates.courseId ? Number(updates.courseId) : null;
+      rule.courseCode = updates.courseCode.trim();
+      rule.courseName = updates.courseName ? updates.courseName.trim() : null;
+    }
+
+    if (updates.providerConfigurationId) {
+      const cleanProvId = String(updates.providerConfigurationId).trim();
+      const prov = await ProviderConfiguration.findById(cleanProvId);
+      if (!prov) {
+        throw AppError.notFound(`Payment Account '${cleanProvId}' not found`, ERROR_CODES.PROVIDER_NOT_FOUND);
+      }
+      rule.providerConfigurationId = cleanProvId;
+    }
+    if (updates.status) {
+      rule.status = updates.status;
+    }
+    if (updates.notes !== undefined) {
+      rule.notes = updates.notes;
+    }
+
+    await rule.save();
+
+    const populated = await CollegeRouting.findById(rule._id)
+      .populate('providerConfigurationId', 'name accountNumber provider environment status keyId')
+      .populate('applicationId', 'name code');
+
+    logger.info('Updated college routing rule', { ruleId: rule._id, status: rule.status });
+    return populated;
+  }
+
+  /**
    * Delete a routing rule
    */
   async deleteRoutingRule(id) {

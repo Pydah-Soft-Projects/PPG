@@ -4,6 +4,7 @@ const validate = require('../../middleware/validate');
 const {
   upsertRoutingRuleSchema,
   batchUpsertRoutingRulesSchema,
+  updateRoutingRuleSchema,
 } = require('./colleges.validator');
 const { adminAuthMiddleware, requireRole } = require('../../middleware/admin-auth');
 const { ADMIN_ROLE } = require('../../config/constants');
@@ -36,6 +37,13 @@ router.post(
   requireRole([ADMIN_ROLE.SUPER_ADMIN, ADMIN_ROLE.ADMIN]),
   validate({ body: batchUpsertRoutingRulesSchema }),
   collegesController.batchUpsertRoutingRules
+);
+
+router.patch(
+  '/rules/:id',
+  requireRole([ADMIN_ROLE.SUPER_ADMIN, ADMIN_ROLE.ADMIN]),
+  validate({ body: updateRoutingRuleSchema }),
+  collegesController.updateRoutingRule
 );
 
 router.delete(

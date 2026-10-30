@@ -18,8 +18,10 @@ export function CollegesRoutingView() {
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [search, setSearch] = useState('');
 
-  // Routing Modal State
+  // Routing Modal State (Unified for Create and Edit modes)
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('create'); // 'create' or 'edit'
+  const [editingRule, setEditingRule] = useState(null);
   const [saving, setSaving] = useState(false);
 
   // Modal Step Form State
@@ -77,8 +79,10 @@ export function CollegesRoutingView() {
     }
   };
 
-  // Open Modal
+  // Open Modal (Create Mode)
   const openRoutingModal = (preselectedCollege = null, preselectedCourse = null) => {
+    setModalMode('create');
+    setEditingRule(null);
     setSelectedApplicationId(applications[0]?._id || applications[0]?.id || '');
     const initialCollegeIds = preselectedCollege ? [preselectedCollege.id] : [];
     setSelectedCollegeIds(initialCollegeIds);
@@ -96,6 +100,39 @@ export function CollegesRoutingView() {
     setSelectedProviderId(defaultProviderId);
     setRuleStatus('ACTIVE');
     setNotes('');
+
+    if (initialCollegeIds.length > 0) {
+      fetchCoursesForColleges(initialCollegeIds);
+    } else {
+      setModalCourses([]);
+    }
+
+    setIsModalOpen(true);
+  };
+
+  // Open Modal (Edit Mode)
+  const openEditRuleModal = (rule) => {
+    setModalMode('edit');
+    setEditingRule(rule);
+    // Application is locked in edit mode
+    setSelectedApplicationId(rule.applicationId?._id || rule.applicationId?.id || '');
+
+    const initialCollegeIds = rule.collegeId ? [rule.collegeId] : [];
+    setSelectedCollegeIds(initialCollegeIds);
+    setCollegeSearchFilter('');
+
+    if (rule.courseCode) {
+      setCourseScope('SPECIFIC');
+      setSelectedCourseIds(rule.courseId ? [rule.courseId] : []);
+    } else {
+      setCourseScope('ALL');
+      setSelectedCourseIds([]);
+    }
+
+    const defaultProviderId = rule.providerConfigurationId?._id || rule.providerConfigurationId?.id || '';
+    setSelectedProviderId(defaultProviderId);
+    setRuleStatus(rule.status || 'ACTIVE');
+    setNotes(rule.notes || '');
 
     if (initialCollegeIds.length > 0) {
       fetchCoursesForColleges(initialCollegeIds);
@@ -169,7 +206,7 @@ export function CollegesRoutingView() {
     setSelectedCourseIds([]);
   };
 
-  // Course Checkbox Toggle
+  // Course Checkbox Toggle (Supports selecting multiple in both Add and Edit modes)
   const handleToggleCourse = (courseId) => {
     if (selectedCourseIds.includes(courseId)) {
       setSelectedCourseIds(selectedCourseIds.filter((id) => id !== courseId));
@@ -186,12 +223,12 @@ export function CollegesRoutingView() {
     setSelectedCourseIds([]);
   };
 
-  // Save Routing Rules (Batch)
+  // Save Routing Rules (Handles both Create and Edit)
   const handleSaveRouting = async (e) => {
     e.preventDefault();
 
     if (selectedCollegeIds.length === 0) {
-      toast.error('Please select at least one college.');
+      toast.error('Please select at least one college checkbox.');
       return;
     }
     if (!selectedProviderId) {
@@ -209,37 +246,135 @@ export function CollegesRoutingView() {
           : [];
 
       if (courseScope === 'SPECIFIC' && targetCourses.length === 0) {
-        toast.error('Please select at least one course checkbox, or choose "Apply to All Courses".');
+        toast.error('Please select at least one course checkbox, or choose "All Courses (College-Wide default)".');
         setSaving(false);
         return;
       }
 
-      const payload = {
-        applicationId: selectedApplicationId || null,
-        colleges: targetColleges.map((c) => ({
-          id: c.id,
-          code: c.code,
-          name: c.name,
-        })),
-        courses: targetCourses.map((c) => ({
-          id: c.id,
-          collegeId: c.college_id,
-          code: c.code,
-          name: c.name,
-        })),
-        providerConfigurationId: selectedProviderId,
-        status: ruleStatus,
-        notes: notes.trim(),
-      };
+      if (modalMode === 'edit' && editingRule) {
+        // Edit Mode: update rule (application is locked & immutable)
+        const college = targetColleges[0];
+        const primaryCourse = targetCourses[0] || null;
 
-      await collegesApi.batchUpsertRoutingRules(payload);
-      toast.success('Payment routing rules saved successfully!');
+        const payload = {
+          collegeId: college.id,
+          collegeCode: college.code,
+          collegeName: college.name,
+          courseScope: courseScope,
+          courseId: primaryCourse ? primaryCourse.id : null,
+          courseCode: primaryCourse ? primaryCourse.code : null,
+          courseName: primaryCourse ? primaryCourse.name : null,
+          providerConfigurationId: selectedProviderId,
+          status: ruleStatus,
+          notes: notes.trim(),
+        };
+
+        await collegesApi.updateRoutingRule(editingRule._id, payload);
+
+        // If multiple colleges or multiple courses were selected in edit mode:
+        // Rule 1 was updated with college + primaryCourse. Now batch create/upsert the remaining ones.
+        const remainingColleges = targetColleges.slice(1);
+        const additionalFirstCollegeCourses = targetCourses.filter(
+          (c, idx) => idx > 0 && c.college_id === college.id
+        );
+
+        if (courseScope === 'ALL') {
+          if (remainingColleges.length > 0) {
+            await collegesApi.batchUpsertRoutingRules({
+              applicationId:
+                editingRule.applicationId?._id ||
+                editingRule.applicationId?.id ||
+                editingRule.applicationId ||
+                null,
+              colleges: remainingColleges.map((c) => ({
+                id: c.id,
+                code: c.code,
+                name: c.name,
+              })),
+              courses: [],
+              providerConfigurationId: selectedProviderId,
+              status: ruleStatus,
+              notes: notes.trim(),
+            });
+          }
+        } else {
+          // Specific courses scope
+          const extraCourses = [
+            ...additionalFirstCollegeCourses,
+            ...targetCourses.filter((c) => remainingColleges.some((col) => col.id === c.college_id)),
+          ];
+
+          if (extraCourses.length > 0) {
+            const relevantColleges = targetColleges.filter((col) =>
+              extraCourses.some((c) => c.college_id === col.id)
+            );
+
+            await collegesApi.batchUpsertRoutingRules({
+              applicationId:
+                editingRule.applicationId?._id ||
+                editingRule.applicationId?.id ||
+                editingRule.applicationId ||
+                null,
+              colleges: relevantColleges.map((c) => ({
+                id: c.id,
+                code: c.code,
+                name: c.name,
+              })),
+              courses: extraCourses.map((c) => ({
+                id: c.id,
+                collegeId: c.college_id,
+                code: c.code,
+                name: c.name,
+              })),
+              providerConfigurationId: selectedProviderId,
+              status: ruleStatus,
+              notes: notes.trim(),
+            });
+          }
+        }
+
+        toast.success('Routing rule(s) updated successfully!');
+      } else {
+        // Create Mode: batch insert rules
+        const payload = {
+          applicationId: selectedApplicationId || null,
+          colleges: targetColleges.map((c) => ({
+            id: c.id,
+            code: c.code,
+            name: c.name,
+          })),
+          courses: targetCourses.map((c) => ({
+            id: c.id,
+            collegeId: c.college_id,
+            code: c.code,
+            name: c.name,
+          })),
+          providerConfigurationId: selectedProviderId,
+          status: ruleStatus,
+          notes: notes.trim(),
+        };
+
+        await collegesApi.batchUpsertRoutingRules(payload);
+        toast.success('Payment routing rules saved successfully!');
+      }
+
       setIsModalOpen(false);
       loadData();
     } catch (err) {
       toast.error('Failed to save routing: ' + err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggleRuleStatus = async (rule) => {
+    const newStatus = rule.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      await collegesApi.updateRoutingRule(rule._id, { status: newStatus });
+      toast.success(`Rule marked ${newStatus}`);
+      loadData();
+    } catch (err) {
+      toast.error('Failed to toggle rule status: ' + err.message);
     }
   };
 
@@ -427,12 +562,32 @@ export function CollegesRoutingView() {
                         )}
                       </td>
                       <td className="px-6 py-3.5">
-                        <Badge status={rule.status} />
+                        <button
+                          onClick={() => handleToggleRuleStatus(rule)}
+                          title="Click to toggle Active / Inactive"
+                          className="cursor-pointer hover:opacity-80 transition-opacity"
+                        >
+                          <Badge status={rule.status} />
+                        </button>
                       </td>
                       <td className="px-6 py-3.5 text-slate-500 max-w-xs truncate">
                         {rule.notes || '—'}
                       </td>
-                      <td className="px-6 py-3.5 text-right">
+                      <td className="px-6 py-3.5 text-right space-x-2">
+                        <button
+                          onClick={() => openEditRuleModal(rule)}
+                          className="text-xs text-indigo-600 hover:underline font-semibold"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleToggleRuleStatus(rule)}
+                          className={`text-xs hover:underline font-semibold ${
+                            rule.status === 'ACTIVE' ? 'text-amber-600' : 'text-emerald-600'
+                          }`}
+                        >
+                          {rule.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                        </button>
                         <button
                           onClick={() => handleDeleteRule(rule._id)}
                           className="text-xs text-rose-600 hover:underline font-semibold"
@@ -616,38 +771,61 @@ export function CollegesRoutingView() {
         </div>
       </div>
 
-      {/* Add / Edit Routing Modal (Multi-Select Application, Colleges & Courses with Checkboxes) */}
+      {/* Unified Add / Edit Routing Modal (with Checkboxes for Colleges & Courses) */}
       {isModalOpen && (
         <Modal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          title="Add Payment Routing"
+          title={modalMode === 'edit' ? 'Edit Payment Routing' : 'Add Payment Routing'}
           maxWidth="max-w-2xl"
         >
           <form onSubmit={handleSaveRouting} className="space-y-4 text-xs">
             {/* Step 1: Select Application */}
             <div>
-              <label className="block font-bold text-slate-800 uppercase tracking-wider mb-1">
-                1. Select Application *
-              </label>
-              <select
-                value={selectedApplicationId}
-                onChange={(e) => setSelectedApplicationId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
-              >
-                <option value="">All Applications (Global Default)</option>
-                {applications.map((app) => {
-                  const appId = app.id || app._id;
-                  return (
-                    <option key={appId} value={appId}>
-                      {app.name} ({app.code})
-                    </option>
-                  );
-                })}
-              </select>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Target application originating the payment order.
-              </p>
+              {modalMode === 'edit' ? (
+                <div className="p-3 bg-slate-100/90 border border-slate-200 rounded-xl">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">
+                      1. Application (Locked)
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-slate-600 flex items-center gap-1">
+                      🔒 Cannot be changed
+                    </span>
+                  </div>
+                  <div className="font-semibold text-slate-900 text-sm">
+                    {editingRule?.applicationId?.name || 'All Applications (Global Default)'}
+                    {editingRule?.applicationId?.code && (
+                      <span className="font-mono text-slate-500 font-normal text-xs ml-1">
+                        ({editingRule.applicationId.code})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block font-bold text-slate-800 uppercase tracking-wider mb-1">
+                    1. Select Application *
+                  </label>
+                  <select
+                    value={selectedApplicationId}
+                    onChange={(e) => setSelectedApplicationId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
+                  >
+                    <option value="">All Applications (Global Default)</option>
+                    {applications.map((app) => {
+                      const appId = app.id || app._id;
+                      return (
+                        <option key={appId} value={appId}>
+                          {app.name} ({app.code})
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Target application originating the payment order.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Step 2: Select Colleges with Checkboxes */}
@@ -702,7 +880,9 @@ export function CollegesRoutingView() {
                       <label
                         key={col.id}
                         className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors ${
-                          isChecked ? 'bg-indigo-50/70 border border-indigo-200' : 'hover:bg-slate-50 border border-transparent'
+                          isChecked
+                            ? 'bg-indigo-50/70 border border-indigo-200'
+                            : 'hover:bg-slate-50 border border-transparent'
                         }`}
                       >
                         <input
@@ -735,7 +915,7 @@ export function CollegesRoutingView() {
                   </label>
                   <span className="text-[11px] text-slate-500">
                     {courseScope === 'ALL'
-                      ? 'Applying to all courses for selected colleges'
+                      ? 'Applying to all courses for selected college(s)'
                       : `${selectedCourseIds.length} course(s) selected`}
                   </span>
                 </div>
@@ -770,7 +950,7 @@ export function CollegesRoutingView() {
                 <div className="pt-2 border-t border-slate-200 space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-[11px] text-slate-500 font-medium">
-                      Available Courses from Selected Colleges:
+                      Available Courses from Selected College(s):
                     </span>
                     <div className="flex gap-2">
                       <button
@@ -797,7 +977,7 @@ export function CollegesRoutingView() {
                     <div className="text-center py-4 text-slate-400 border border-slate-200 rounded-lg bg-white">
                       {selectedCollegeIds.length === 0
                         ? 'Select one or more colleges above to display their courses.'
-                        : 'No courses found for the selected colleges.'}
+                        : 'No courses found for the selected college(s).'}
                     </div>
                   ) : (
                     <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-white space-y-1.5">
@@ -809,7 +989,9 @@ export function CollegesRoutingView() {
                           <label
                             key={crs.id}
                             className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors ${
-                              isChecked ? 'bg-indigo-50/70 border border-indigo-200' : 'hover:bg-slate-50 border border-transparent'
+                              isChecked
+                                ? 'bg-indigo-50/70 border border-indigo-200'
+                                : 'hover:bg-slate-50 border border-transparent'
                             }`}
                           >
                             <input
@@ -829,7 +1011,9 @@ export function CollegesRoutingView() {
                               </div>
                               <div className="text-[11px] text-slate-500 font-mono flex items-center gap-2">
                                 <span>Code: {crs.code}</span>
-                                {coll && <span className="text-indigo-600 font-sans">({coll.name})</span>}
+                                {coll && (
+                                  <span className="text-indigo-600 font-sans">({coll.name})</span>
+                                )}
                               </div>
                             </div>
                           </label>
@@ -877,10 +1061,10 @@ export function CollegesRoutingView() {
                 <select
                   value={ruleStatus}
                   onChange={(e) => setRuleStatus(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-medium"
                 >
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="INACTIVE">INACTIVE</option>
+                  <option value="ACTIVE">ACTIVE (Receiving Transactions)</option>
+                  <option value="INACTIVE">INACTIVE (Disabled)</option>
                 </select>
               </div>
 
@@ -912,7 +1096,7 @@ export function CollegesRoutingView() {
                 disabled={saving}
                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md shadow-indigo-600/20 disabled:opacity-50"
               >
-                {saving ? 'Saving...' : 'Save Routing'}
+                {saving ? 'Saving...' : modalMode === 'edit' ? 'Save Changes' : 'Save Routing'}
               </button>
             </div>
           </form>

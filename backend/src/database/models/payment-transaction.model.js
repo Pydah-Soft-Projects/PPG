@@ -65,6 +65,11 @@ const paymentTransactionSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    paymentSessionId: {
+      type: String,
+      trim: true,
+      index: true,
+    },
     providerPaymentId: {
       type: String,
       trim: true,

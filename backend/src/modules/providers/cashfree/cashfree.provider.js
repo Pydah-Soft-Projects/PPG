@@ -36,15 +36,23 @@ class CashfreeProvider extends BaseProviderInterface {
       const orderAmountRupees = (orderData.amount / 100).toFixed(2);
       const orderId = orderData.receipt || `order_${Date.now()}`;
 
+      // Customer details - use orderData.customer first, then notes, then fallback
+      const customer = orderData.customer || {};
+      const customerId =
+        orderData.notes?.studentId ||
+        orderData.notes?.customerId ||
+        (customer.email ? customer.email.replace(/[^a-zA-Z0-9_-]/g, '_') : '') ||
+        `cust_${Date.now()}`;
+
       const payload = {
         order_id: orderId,
         order_amount: parseFloat(orderAmountRupees),
         order_currency: orderData.currency || 'INR',
         customer_details: {
-          customer_id: orderData.notes?.customerId || `cust_${Date.now()}`,
-          customer_name: orderData.notes?.customerName || 'Customer',
-          customer_email: orderData.notes?.customerEmail || 'customer@pydah.edu.in',
-          customer_phone: orderData.notes?.customerPhone || '9876543210',
+          customer_id: customerId,
+          customer_name: customer.name || orderData.notes?.customerName || 'Student',
+          customer_email: customer.email || orderData.notes?.customerEmail || 'student@pydah.edu.in',
+          customer_phone: customer.phone ? customer.phone.replace(/[^0-9]/g, '').slice(-10) : (orderData.notes?.customerPhone || '9876543210'),
         },
         order_meta: {
           return_url: orderData.notes?.returnUrl || '',

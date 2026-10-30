@@ -1,4 +1,5 @@
 const PaymentTransaction = require('../../database/models/payment-transaction.model');
+const PaymentAttempt = require('../../database/models/payment-attempt.model');
 const ProviderConfiguration = require('../../database/models/provider-configuration.model');
 const Application = require('../../database/models/application.model');
 const paymentsService = require('../payments/payments.service');
@@ -43,6 +44,16 @@ class CheckoutController {
         return res.status(500).send(this.renderErrorPage('Provider Configuration Missing', 'No active payment gateway account is linked to this payment.'));
       }
 
+      // Retrieve paymentSessionId for Cashfree if needed
+      let paymentSessionId = payment.paymentSessionId;
+      if (!paymentSessionId && providerConfig?.provider === 'CASHFREE') {
+        const attempt = await PaymentAttempt.findOne({ paymentId: payment._id }).sort({ createdAt: -1 });
+        paymentSessionId =
+          attempt?.responsePayload?.payment_session_id ||
+          attempt?.responsePayload?.paymentSessionId ||
+          '';
+      }
+
       // Render the active checkout HTML (Light Theme & Mobile Optimized)
       const html = this.buildCheckoutHtml({
         payment,
@@ -50,6 +61,7 @@ class CheckoutController {
         formattedAmount,
         providerConfig,
         effectiveReturnUrl,
+        paymentSessionId,
       });
 
       res.setHeader('Content-Type', 'text/html');
@@ -110,7 +122,7 @@ class CheckoutController {
     }
   }
 
-  buildCheckoutHtml({ payment, appName, formattedAmount, providerConfig, effectiveReturnUrl }) {
+  buildCheckoutHtml({ payment, appName, formattedAmount, providerConfig, effectiveReturnUrl, paymentSessionId = '' }) {
     const isMock = providerConfig.provider === 'MOCK';
     const isRazorpay = providerConfig.provider === 'RAZORPAY';
     const isCashfree = providerConfig.provider === 'CASHFREE';
@@ -404,15 +416,22 @@ class CheckoutController {
     }
 
     function launchCashfree() {
+      const sessId = "${paymentSessionId || payment.paymentSessionId || ''}";
+      if (!sessId) {
+        setStatus('Cashfree payment session ID is missing or invalid. Please re-create the payment order.', true);
+        return;
+      }
       setStatus('Initializing Cashfree secure checkout...');
       const cashfree = Cashfree({ mode: "${providerConfig.environment === 'LIVE' ? 'production' : 'sandbox'}" });
       cashfree.checkout({
-        paymentSessionId: "${payment.providerOrderId}",
+        paymentSessionId: sessId,
         redirectTarget: "_self"
       }).then((result) => {
-        if (result.error) {
-          setStatus(result.error.message, true);
+        if (result && result.error) {
+          setStatus(result.error.message || 'Payment initiation failed', true);
         }
+      }).catch((err) => {
+        setStatus('Cashfree checkout initialization failed: ' + (err.message || err), true);
       });
     }
 
