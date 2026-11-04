@@ -37,9 +37,7 @@ function redactSensitiveData(obj) {
   return sanitized;
 }
 
-const isProduction = process.env.NODE_ENV === 'production' && process.env.LOG_FORMAT !== 'pretty';
-
-// ANSI color codes
+// Clean ANSI color codes
 const colors = {
   reset: '\x1b[0m',
   dim: '\x1b[2m',
@@ -57,117 +55,133 @@ function formatConsoleTime() {
   return now.toTimeString().split(' ')[0]; // HH:MM:SS
 }
 
-function printDevLog(level, message, meta = {}) {
-  const time = formatConsoleTime();
-  const sanitizedMeta = redactSensitiveData(meta);
+function formatCleanStack(stack) {
+  if (!stack || typeof stack !== 'string') return '';
+  const lines = stack.split('\n');
+  const errorTitle = lines[0];
 
-  // If this is an HTTP request log
-  if (sanitizedMeta.method && sanitizedMeta.path) {
-    const code = sanitizedMeta.statusCode || 200;
-    const method = sanitizedMeta.method.padEnd(6, ' ');
-    const path = sanitizedMeta.path;
-    const duration = sanitizedMeta.durationMs ? `${sanitizedMeta.durationMs}ms` : '';
+  // Filter out internal Node.js ticks and node_modules noise
+  const appLines = lines.slice(1).filter((l) => {
+    return !l.includes('node:internal') && !l.includes('node_modules');
+  });
 
-    let statusColor = colors.green;
-    let icon = '✔';
+  const relevant = appLines.length > 0 ? appLines.slice(0, 4) : lines.slice(1, 4);
+  return [errorTitle, ...relevant.map((l) => '    ' + l.trim())].join('\n');
+}
 
-    if (code >= 500) {
-      statusColor = colors.red;
-      icon = '✖';
-    } else if (code >= 400) {
-      statusColor = colors.yellow;
-      icon = '⚠';
-    } else if (code >= 300) {
-      statusColor = colors.cyan;
-      icon = '↪';
-    }
+function formatMetaSummary(meta = {}) {
+  const sanitized = redactSensitiveData(meta);
+  const ignoreKeys = ['requestId', 'stack', 'method', 'path', 'statusCode', 'durationMs', 'errorMessage'];
+  const keys = Object.keys(sanitized).filter((k) => !ignoreKeys.includes(k) && sanitized[k] !== undefined && sanitized[k] !== '');
 
-    const errorSuffix = sanitizedMeta.errorMessage ? ` ${colors.yellow}→ ${sanitizedMeta.errorMessage}${colors.reset}` : '';
+  if (keys.length === 0) return '';
 
+  const parts = keys.map((k) => {
+    const val = typeof sanitized[k] === 'object' ? JSON.stringify(sanitized[k]) : sanitized[k];
+    return `${k}=${val}`;
+  });
+
+  return `${colors.gray}[${parts.join(' ')}]${colors.reset}`;
+}
+
+const isJsonFormat = process.env.LOG_FORMAT === 'json';
+
+function printHttpLog({ method, path, statusCode = 200, durationMs = 0, errorMessage }) {
+  if (isJsonFormat) {
     console.log(
-      `${colors.gray}[${time}]${colors.reset} ${statusColor}${icon} ${code}${colors.reset} ${colors.bold}${method}${colors.reset} ${path} ${colors.dim}(${duration})${colors.reset}${errorSuffix}`
+      JSON.stringify({
+        level: statusCode >= 500 ? 'ERROR' : statusCode >= 400 ? 'WARN' : 'INFO',
+        timestamp: new Date().toISOString(),
+        type: 'HTTP',
+        method,
+        path,
+        statusCode,
+        durationMs,
+        ...(errorMessage ? { error: errorMessage } : {}),
+      })
     );
     return;
   }
 
-  // General messages
+  const time = formatConsoleTime();
+  const paddedMethod = method.padEnd(6, ' ');
+  const duration = `${durationMs}ms`;
+
+  let statusColor = colors.green;
+  let icon = '✔';
+
+  if (statusCode >= 500) {
+    statusColor = colors.red;
+    icon = '✖';
+  } else if (statusCode >= 400) {
+    statusColor = colors.yellow;
+    icon = '⚠';
+  } else if (statusCode >= 300) {
+    statusColor = colors.cyan;
+    icon = '↪';
+  }
+
+  const errorSuffix = errorMessage ? ` ${colors.yellow}→ ${errorMessage}${colors.reset}` : '';
+
+  console.log(
+    `${colors.gray}[${time}]${colors.reset} ${statusColor}${icon} ${statusCode}${colors.reset} ${colors.bold}${paddedMethod}${colors.reset} ${path} ${colors.dim}(${duration})${colors.reset}${errorSuffix}`
+  );
+}
+
+function printAppLog(level, message, meta = {}) {
+  if (isJsonFormat) {
+    const sanitizedMeta = redactSensitiveData(meta);
+    console.log(
+      JSON.stringify({
+        level,
+        timestamp: new Date().toISOString(),
+        message,
+        ...sanitizedMeta,
+      })
+    );
+    return;
+  }
+
+  const time = formatConsoleTime();
   let levelBadge = `${colors.cyan}[INFO]${colors.reset}`;
   if (level === 'WARN') levelBadge = `${colors.yellow}[WARN]${colors.reset}`;
   if (level === 'ERROR') levelBadge = `${colors.red}[ERROR]${colors.reset}`;
   if (level === 'DEBUG') levelBadge = `${colors.gray}[DEBUG]${colors.reset}`;
 
-  const metaKeys = Object.keys(sanitizedMeta).filter((k) => k !== 'requestId');
-  const metaStr =
-    metaKeys.length > 0
-      ? ` ${colors.gray}${JSON.stringify(sanitizedMeta)}${colors.reset}`
-      : '';
+  const metaStr = formatMetaSummary(meta);
+  const spacing = metaStr ? ' ' : '';
 
-  console.log(`${colors.gray}[${time}]${colors.reset} ${levelBadge} ${message}${metaStr}`);
+  console.log(`${colors.gray}[${time}]${colors.reset} ${levelBadge} ${message}${spacing}${metaStr}`);
+
+  // Print stack cleanly if error stack is present
+  if (level === 'ERROR' && meta && meta.stack) {
+    const cleanStack = formatCleanStack(meta.stack);
+    if (cleanStack) {
+      console.error(`${colors.red}${cleanStack}${colors.reset}`);
+    }
+  }
 }
 
 const logger = {
+  http: (logData) => {
+    printHttpLog(logData);
+  },
+
   info: (message, meta = {}) => {
-    if (isProduction) {
-      console.log(
-        JSON.stringify({
-          level: 'INFO',
-          timestamp: new Date().toISOString(),
-          message,
-          ...redactSensitiveData(meta),
-        })
-      );
-    } else {
-      printDevLog('INFO', message, meta);
-    }
+    printAppLog('INFO', message, meta);
   },
 
   warn: (message, meta = {}) => {
-    if (isProduction) {
-      console.warn(
-        JSON.stringify({
-          level: 'WARN',
-          timestamp: new Date().toISOString(),
-          message,
-          ...redactSensitiveData(meta),
-        })
-      );
-    } else {
-      printDevLog('WARN', message, meta);
-    }
+    printAppLog('WARN', message, meta);
   },
 
   error: (message, meta = {}) => {
-    if (isProduction) {
-      console.error(
-        JSON.stringify({
-          level: 'ERROR',
-          timestamp: new Date().toISOString(),
-          message,
-          ...redactSensitiveData(meta),
-        })
-      );
-    } else {
-      printDevLog('ERROR', message, meta);
-      if (meta && meta.stack) {
-        console.error(`${colors.red}${meta.stack}${colors.reset}`);
-      }
-    }
+    printAppLog('ERROR', message, meta);
   },
 
   debug: (message, meta = {}) => {
     if (process.env.NODE_ENV === 'production') return;
-    if (isProduction) {
-      console.log(
-        JSON.stringify({
-          level: 'DEBUG',
-          timestamp: new Date().toISOString(),
-          message,
-          ...redactSensitiveData(meta),
-        })
-      );
-    } else {
-      printDevLog('DEBUG', message, meta);
-    }
+    printAppLog('DEBUG', message, meta);
   },
 };
 

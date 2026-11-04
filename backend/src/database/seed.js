@@ -1,97 +1,40 @@
 const bcrypt = require('bcryptjs');
 const { connectDatabase, disconnectDatabase } = require('./connection');
 const AdminUser = require('./models/admin-user.model');
-const Application = require('./models/application.model');
-const ApplicationCredential = require('./models/application-credential.model');
-const ProviderConfiguration = require('./models/provider-configuration.model');
-const { encryptSecret, hashSecret } = require('../common/utils/crypto');
-const { generateAppKeyId, generateAppSecret } = require('../common/utils/id');
-const { ADMIN_ROLE, PROVIDER_TYPE, PROVIDER_ENVIRONMENT } = require('../config/constants');
+const { ADMIN_ROLE } = require('../config/constants');
 const { logger } = require('../common/logger/logger');
 
 async function seedDatabase() {
   try {
     await connectDatabase();
-    console.log('\n--- Seeding Initial Pydah Payment Gateway Data ---');
+    console.log('\n--- Seeding Initial Super Admin ---');
 
-    // 1. Seed Super Admin
-    let admin = await AdminUser.findOne({ username: 'admin' });
+    const defaultUsername = process.env.ADMIN_USERNAME || 'superadmin';
+    const defaultPassword = process.env.ADMIN_PASSWORD || 'superadmin123';
+    const defaultEmail = process.env.ADMIN_EMAIL || '[EMAIL_ADDRESS]';
+
+    let admin = await AdminUser.findOne({
+      $or: [{ username: defaultUsername }, { username: 'admin' }],
+    });
+
     if (!admin) {
       const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash('superadmin123', salt);
+      const passwordHash = await bcrypt.hash(defaultPassword, salt);
 
       admin = await AdminUser.create({
-        username: 'superadmin',
-        email: "[EMAIL_ADDRESS]",
+        username: defaultUsername,
+        email: defaultEmail,
         passwordHash,
         role: ADMIN_ROLE.SUPER_ADMIN,
         isActive: true,
       });
-      console.log('✔ Super Admin created:');
-      console.log('   Username: superadmin');
-      console.log('   Password: superadmin123');
+
+      console.log('✔ Super Admin created successfully:');
+      console.log(`   Username: ${defaultUsername}`);
+      console.log(`   Password: ${defaultPassword}`);
+      console.log(`   Email:    ${defaultEmail}`);
     } else {
-      console.log('ℹ Super Admin "admin" already exists.');
-    }
-
-    // 2. Seed Test Provider Configuration (Razorpay Test Mode)
-    let providerConfig = await ProviderConfiguration.findOne({
-      provider: PROVIDER_TYPE.RAZORPAY,
-      environment: PROVIDER_ENVIRONMENT.TEST,
-    });
-
-    if (!providerConfig) {
-      providerConfig = await ProviderConfiguration.create({
-        name: 'Razorpay - Test Mode Account',
-        provider: PROVIDER_TYPE.RAZORPAY,
-        environment: PROVIDER_ENVIRONMENT.TEST,
-        keyId: 'rzp_test_placeholder_key_id',
-        encryptedKeySecret: encryptSecret('placeholder_test_secret_replace_in_dashboard'),
-        encryptedWebhookSecret: encryptSecret('placeholder_webhook_secret_replace'),
-        status: 'ACTIVE',
-        allowedApplicationIds: [],
-        notes: 'Initial test mode placeholder. Update with actual test credentials in Admin Settings.',
-      });
-      console.log('✔ Default Razorpay Test Provider configuration created:');
-      console.log(`   Config ID: ${providerConfig._id}`);
-    } else {
-      console.log(`ℹ Provider config already exists: ${providerConfig._id}`);
-    }
-
-    // 3. Seed Default Application (e.g. Pydah LMS)
-    let app = await Application.findOne({ code: 'pydah_lms' });
-    let appSecret = null;
-    let appKeyId = null;
-
-    if (!app) {
-      app = await Application.create({
-        name: 'Pydah Learning Management System',
-        code: 'pydah_lms',
-        description: 'Pydah College Student Portal & Course Fee Payments',
-        notificationWebhookUrl: 'http://localhost:4000/api/webhooks/payment',
-        allowedReturnUrls: ['http://localhost:5173/payment-success'],
-        assignedProviderConfigurations: [providerConfig._id],
-        status: 'ACTIVE',
-      });
-
-      appKeyId = generateAppKeyId();
-      appSecret = generateAppSecret();
-      const hashedSecret = hashSecret(appSecret);
-
-      await ApplicationCredential.create({
-        applicationId: app._id,
-        keyId: appKeyId,
-        hashedSecret,
-        status: 'ACTIVE',
-      });
-
-      console.log('✔ Test Application created:');
-      console.log(`   Name: ${app.name}`);
-      console.log(`   App ID: ${app._id}`);
-      console.log(`   X-App-Key: ${appKeyId}`);
-      console.log(`   X-App-Secret: ${appSecret}`);
-    } else {
-      console.log(`ℹ Application "pydah_lms" already exists.`);
+      console.log(`ℹ Super Admin ("${admin.username}") already exists.`);
     }
 
     console.log('--- Database Seeding Complete ---\n');
@@ -107,4 +50,3 @@ if (require.main === module) {
 }
 
 module.exports = seedDatabase;
-
