@@ -156,7 +156,7 @@ class PaymentsService {
     // 3. Create Provider Order
     let providerOrderResult;
     try {
-      const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5000';
+      const baseUrl = process.env.APP_BASE_URL || 'http://localhost:5005';
       const checkoutReturnUrl = `${baseUrl}/checkout/${paymentId}?cf_order_id={order_id}`;
 
       providerOrderResult = await adapter.createOrder({

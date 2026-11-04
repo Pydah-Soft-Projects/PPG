@@ -21,6 +21,13 @@ async function connectDatabase() {
       uri: env.MONGODB_URI.replace(/:\/\/.*@/, '://<credentials>@'),
     });
 
+    // Safely cleanup legacy indexes that conflict with application-scoped unique indexes
+    try {
+      await mongoose.connection.collection('collegeroutings').dropIndex('collegeCode_1_courseCode_1');
+    } catch (_) {
+      // Ignored if index does not exist
+    }
+
     mongoose.connection.on('error', (err) => {
       logger.error('MongoDB connection error', { error: err.message });
     });

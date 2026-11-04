@@ -67,6 +67,9 @@ class CheckoutController {
           redirectUrl.searchParams.set('paymentId', payment._id);
           redirectUrl.searchParams.set('status', 'SUCCEEDED');
           redirectUrl.searchParams.set('businessReference', payment.businessReference);
+          if (req.query.embedded === 'true') {
+            return res.send(this.renderSuccessPage(payment, appName, formattedAmount, redirectUrl.toString()));
+          }
           return res.redirect(redirectUrl.toString());
         }
         return res.send(this.renderSuccessPage(payment, appName, formattedAmount));
@@ -602,7 +605,7 @@ class CheckoutController {
 </html>`;
   }
 
-  renderSuccessPage(payment, appName, formattedAmount) {
+  renderSuccessPage(payment, appName, formattedAmount, redirectUrl = '') {
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -656,6 +659,20 @@ class CheckoutController {
     }
     .row { display: flex; justify-content: space-between; padding: 0.35rem 0; color: #475569; }
     .val { font-weight: 600; font-family: monospace; color: #0f172a; }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: #0f172a;
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 600;
+      border-radius: 0.75rem;
+      font-size: 0.875rem;
+      transition: background 0.15s ease;
+      box-sizing: border-box;
+    }
+    .btn:hover { background: #1e293b; }
   </style>
 </head>
 <body>
@@ -669,7 +686,44 @@ class CheckoutController {
       <div class="row"><span>Reference:</span><span class="val">${payment.businessReference}</span></div>
       ${payment.providerPaymentId ? `<div class="row"><span>Provider Ref:</span><span class="val">${payment.providerPaymentId}</span></div>` : ''}
     </div>
+    ${redirectUrl ? `<a href="${redirectUrl}" target="_top" class="btn">Return to Application</a>` : ''}
   </div>
+
+  <script>
+    (function() {
+      var msg = {
+        type: 'PPG_PAYMENT_SUCCESS',
+        event: 'PPG_PAYMENT_SUCCESS',
+        paymentId: "${payment._id}",
+        status: 'SUCCEEDED',
+        businessReference: "${payment.businessReference}",
+        amount: ${payment.amount}
+      };
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage(msg, '*');
+        }
+        if (window.opener) {
+          window.opener.postMessage(msg, '*');
+        }
+      } catch (e) {}
+
+      var returnUrl = "${redirectUrl || ''}";
+      if (returnUrl) {
+        setTimeout(function() {
+          try {
+            if (window.top && window.top !== window) {
+              window.top.location.href = returnUrl;
+            } else {
+              window.location.href = returnUrl;
+            }
+          } catch (e) {
+            window.location.href = returnUrl;
+          }
+        }, 1200);
+      }
+    })();
+  </script>
 </body>
 </html>`;
   }

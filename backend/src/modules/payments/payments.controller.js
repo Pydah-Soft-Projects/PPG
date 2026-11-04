@@ -12,7 +12,7 @@ class PaymentsController {
 
       const statusCode = result.isIdempotentReplay ? 200 : 201;
       const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-      const host = req.get('host') || 'localhost:5000';
+      const host = req.get('host') || 'localhost:5005';
       const fullCheckoutUrl = `${protocol}://${host}${result.checkoutUrl}`;
 
       res.status(statusCode).json({

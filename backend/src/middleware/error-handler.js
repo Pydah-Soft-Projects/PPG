@@ -38,7 +38,10 @@ function errorHandlerMiddleware(err, req, res, next) {
   if (err.code === 11000) {
     statusCode = 409;
     errorCode = ERROR_CODES.CONFLICT;
-    message = 'Duplicate key collision on a unique field';
+    const fields = err.keyValue ? Object.keys(err.keyValue).join(', ') : '';
+    message = fields
+      ? `A routing rule with this ${fields} already exists (${Object.entries(err.keyValue).map(([k, v]) => `${k}: ${v}`).join(', ')})`
+      : 'Duplicate key collision on a unique field';
     details = err.keyValue;
   }
 
