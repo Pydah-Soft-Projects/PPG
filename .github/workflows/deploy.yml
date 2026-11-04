@@ -42,7 +42,7 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         env:
-          VITE_API_BASE_URL: /api/v1
+          VITE_API_BASE_URL: https://ppg-backend.pydah.edu.in/api/v1
         run: |
           npm run build
 
