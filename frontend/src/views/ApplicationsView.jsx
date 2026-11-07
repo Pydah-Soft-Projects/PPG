@@ -11,6 +11,7 @@ export function ApplicationsView() {
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [revealedCreds, setRevealedCreds] = useState(null);
+  const [editingApp, setEditingApp] = useState(null);
 
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -18,6 +19,15 @@ export function ApplicationsView() {
     description: '',
     notificationWebhookUrl: '',
     allowedReturnUrls: '',
+  });
+
+  const [editForm, setEditForm] = useState({
+    name: '',
+    code: '',
+    description: '',
+    notificationWebhookUrl: '',
+    allowedReturnUrls: '',
+    status: 'ACTIVE',
   });
 
   const toast = useToast();
@@ -69,6 +79,60 @@ export function ApplicationsView() {
       fetchApps();
     } catch (err) {
       toast.error('Registration failed: ' + err.message);
+    }
+  };
+
+  const openEditModal = (app) => {
+    setEditingApp(app);
+    setEditForm({
+      name: app.name || '',
+      code: app.code || '',
+      description: app.description || '',
+      notificationWebhookUrl: app.notificationWebhookUrl || '',
+      allowedReturnUrls: Array.isArray(app.allowedReturnUrls)
+        ? app.allowedReturnUrls.join('\n')
+        : '',
+      status: app.status || 'ACTIVE',
+    });
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editingApp) return;
+
+    try {
+      const payload = {
+        name: editForm.name.trim(),
+        description: editForm.description.trim(),
+        notificationWebhookUrl: editForm.notificationWebhookUrl.trim() || '',
+        allowedReturnUrls: editForm.allowedReturnUrls
+          ? editForm.allowedReturnUrls
+              .split('\n')
+              .map((u) => u.trim())
+              .filter(Boolean)
+          : [],
+        status: editForm.status,
+      };
+
+      await applicationsApi.update(editingApp._id, payload);
+      toast.success('Application updated successfully!');
+      setEditingApp(null);
+      fetchApps();
+    } catch (err) {
+      toast.error('Failed to update application: ' + err.message);
+    }
+  };
+
+  const handleToggleStatus = async (app) => {
+    const newStatus = app.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      await applicationsApi.update(app._id, { status: newStatus });
+      toast.success(
+        `Application "${app.name}" ${newStatus === 'ACTIVE' ? 'activated' : 'deactivated'} successfully!`
+      );
+      fetchApps();
+    } catch (err) {
+      toast.error('Failed to update status: ' + err.message);
     }
   };
 
@@ -156,9 +220,29 @@ export function ApplicationsView() {
                       {app.notificationWebhookUrl || 'Not configured'}
                     </td>
                     <td className="px-6 py-3.5">
-                      <Badge status={app.status} />
+                      <button
+                        onClick={() => handleToggleStatus(app)}
+                        title="Click to toggle Active / Inactive"
+                        className="cursor-pointer hover:opacity-80 transition-opacity"
+                      >
+                        <Badge status={app.status} />
+                      </button>
                     </td>
-                    <td className="px-6 py-3.5 text-right">
+                    <td className="px-6 py-3.5 text-right space-x-2">
+                      <button
+                        onClick={() => openEditModal(app)}
+                        className="text-xs text-indigo-600 hover:underline font-semibold"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleToggleStatus(app)}
+                        className={`text-xs hover:underline font-semibold ${
+                          app.status === 'ACTIVE' ? 'text-amber-600' : 'text-emerald-600'
+                        }`}
+                      >
+                        {app.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                      </button>
                       <button
                         onClick={() => handleRotateCredentials(app)}
                         className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-xs font-semibold border border-amber-200"
@@ -271,6 +355,125 @@ export function ApplicationsView() {
           </div>
         </form>
       </Modal>
+
+      {/* Edit Application Modal */}
+      {editingApp && (
+        <Modal
+          isOpen={Boolean(editingApp)}
+          onClose={() => setEditingApp(null)}
+          title={`Edit Application: ${editingApp.name}`}
+        >
+          <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
+            {/* Locked Application Code Card */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                  Application Code (Slug)
+                </span>
+                <span className="font-mono text-xs font-semibold text-slate-800">
+                  {editingApp.code}
+                </span>
+              </div>
+              <span className="px-2.5 py-1 bg-slate-200/80 text-slate-600 rounded-lg text-[11px] font-semibold flex items-center gap-1">
+                🔒 Immutable
+              </span>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Application Name *
+              </label>
+              <input
+                type="text"
+                required
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                placeholder="e.g. Pydah Learning Management System"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Description
+              </label>
+              <input
+                type="text"
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                placeholder="Brief purpose of application"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Status
+              </label>
+              <select
+                value={editForm.status}
+                onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-medium"
+              >
+                <option value="ACTIVE">ACTIVE (Authorized to initiate payments)</option>
+                <option value="INACTIVE">INACTIVE (Disabled)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Notification Webhook URL (Application Backend)
+              </label>
+              <input
+                type="url"
+                value={editForm.notificationWebhookUrl}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, notificationWebhookUrl: e.target.value })
+                }
+                placeholder="https://app.pydah.edu.in/api/webhooks/payment"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
+              />
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                PPG sends signed webhook payloads to this endpoint on payment transitions.
+              </p>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Allowed Return URLs (One per line)
+              </label>
+              <textarea
+                rows={3}
+                value={editForm.allowedReturnUrls}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, allowedReturnUrls: e.target.value })
+                }
+                placeholder="https://app.pydah.edu.in/checkout/success"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
+              />
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Allowed browser redirect destinations after checkout completion.
+              </p>
+            </div>
+
+            <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingApp(null)}
+                className="px-4 py-2 border border-slate-200 rounded-xl font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold"
+              >
+                Save Changes
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {/* One-Time Credential Reveal Modal */}
       {revealedCreds && (
